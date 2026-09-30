@@ -28,12 +28,17 @@ npm run check
 
 只声明 `notify`（低风险），用于打开成功 / 失败的提示。不读文件、不写文件、不访问网络、不碰剪贴板。
 
-## 发布到插件中心
+## 市场
 
-客户端默认的目录源是 [plugins.aiuo.net](https://plugins.aiuo.net)。发布需要三样东西：
+已上架：https://plugins.aiuo.net/plugins/io.github.w1ndys.pi-open-in-vscode
 
-1. 打好标签的源码仓库（`v0.3.0`），标签或 commit 就是审查读取的 `sourceRef`；
-2. 控制台里绑定源码仓库（GitHub App 授权，绑定后非管理员不能换）；
-3. 一个没发布过的版本号加发布说明。
+在 PI-Desktop 的 **Plugins → Marketplace** 里搜「用 VSCode 打开」即可安装。
 
-流程见官方 [CONTRIBUTING.md](https://github.com/vastsa/pi-desktop-plugins/blob/main/CONTRIBUTING.md) 与本仓 `docs/发布说明.md`。
+## 权限
+
+只声明 `notify`（低风险），用于打开成功 / 失败的提示。不读文件、不写文件、不访问网络、不碰剪贴板。
+
+## 重新发布
+
+改 `version` → 提交推送 → 打新标签 → MCP 调 `submit_version`。
+完整流程与踩过的坑见 [docs/发布说明.md](docs/发布说明.md)。
