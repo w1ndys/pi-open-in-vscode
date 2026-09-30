@@ -76,26 +76,11 @@ async function openCurrentWorkspace() {
 }
 
 /**
- * 面板自定义通道。
- */
-async function onPanelInvoke(channel, _payload) {
-  // 只认打开这一条通道
-  if (channel !== "pi-open-in-vscode.open") {
-    return failResult("UNSUPPORTED", "unknown channel: " + channel);
-  }
-  try {
-    return await openCurrentWorkspace();
-  } catch (error) {
-    return failResult("OPEN_FAILED", String(error && error.message ? error.message : error));
-  }
-}
-
-/**
- * 插件加载：把命令面板入口挂上。
+ * 插件加载：挂上立刻打开的命令。
  */
 async function onLoad() {
   await pi.commands.register({
-    id: "pi-open-in-vscode.open",
+    id: "vscode",
     title: "用 VSCode 打开当前工作目录",
     run: async function () {
       const result = await openCurrentWorkspace();
@@ -113,7 +98,7 @@ async function onLoad() {
  * 插件卸载：摘掉命令。
  */
 async function onUnload() {
-  await pi.commands.unregister("pi-open-in-vscode.open");
+  await pi.commands.unregister("vscode");
 }
 
-module.exports = { onLoad, onUnload, onPanelInvoke };
+module.exports = { onLoad, onUnload };

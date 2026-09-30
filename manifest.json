@@ -2,13 +2,11 @@
   "schemaVersion": 1,
   "id": "io.github.w1ndys.pi-open-in-vscode",
   "name": "用 VSCode 打开",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": "w1ndys",
-  "description": "在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。",
+  "description": "用命令立刻用 Visual Studio Code 打开当前工作目录，不再经过侧边栏页面。",
   "main": "main.js",
-  "permissions": [
-    "ui.view"
-  ],
+  "permissions": [],
   "engines": {
     "piDesktop": ">=0.9.0"
   },
@@ -16,21 +14,9 @@
     "productivity"
   ],
   "contributes": {
-    "views": [
-      {
-        "id": "pi-open-in-vscode",
-        "icon": "folder",
-        "order": 50,
-        "entry": "views/index.html",
-        "title": {
-          "en": "Open in VS Code",
-          "zh-CN": "用 VSCode 打开"
-        }
-      }
-    ],
     "commands": [
       {
-        "id": "pi-open-in-vscode.open",
+        "id": "vscode",
         "title": "用 VSCode 打开当前工作目录"
       }
     ]
@@ -38,11 +24,11 @@
   "i18n": {
     "en": {
       "name": "Open in VS Code",
-      "description": "Open the current workspace folder in Visual Studio Code from a work-panel button."
+      "description": "Open the current workspace folder in Visual Studio Code immediately from a command."
     },
     "zh-CN": {
       "name": "用 VSCode 打开",
-      "description": "在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。"
+      "description": "用命令立刻用 Visual Studio Code 打开当前工作目录，不再经过侧边栏页面。"
     }
   }
 }
