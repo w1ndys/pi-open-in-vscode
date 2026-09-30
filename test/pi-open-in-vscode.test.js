@@ -3,7 +3,7 @@
  */
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { isAbsoluteDir, vscodeFileUri, buildOpenPlan } = require("../business/open-in-vscode");
+const { isAbsoluteDir, vscodeFileUri, buildOpenPlan } = require("../business/pi-open-in-vscode");
 const { readWorkspacePath } = require("../data/workspace");
 const { okResult, failResult } = require("../entity/open-result");
 

@@ -1,8 +1,8 @@
 {
-  "name": "open-in-vscode",
+  "name": "pi-open-in-vscode",
   "private": true,
   "description": "PI-Desktop 插件：用 VSCode 打开当前工作目录。",
   "scripts": {
-    "check": "node --check entity/open-result.js && node --check data/workspace.js && node --check business/open-in-vscode.js && node --check main.js && node --test"
+    "check": "node --check entity/open-result.js && node --check data/workspace.js && node --check business/pi-open-in-vscode.js && node --check main.js && node --test"
   }
 }

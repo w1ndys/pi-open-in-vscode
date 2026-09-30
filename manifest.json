@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.w1ndys.open-in-vscode",
+  "id": "io.github.w1ndys.pi-open-in-vscode",
   "name": "用 VSCode 打开",
   "version": "0.1.0",
   "author": "w1ndys",
@@ -19,7 +19,7 @@
   "contributes": {
     "views": [
       {
-        "id": "open",
+        "id": "pi-open-in-vscode",
         "icon": "folder",
         "order": 50,
         "entry": "views/index.html",
@@ -31,7 +31,7 @@
     ],
     "commands": [
       {
-        "id": "open-in-vscode.open",
+        "id": "pi-open-in-vscode.open",
         "title": "用 VSCode 打开当前工作目录"
       }
     ]

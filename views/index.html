@@ -108,7 +108,7 @@
         button.disabled = true;
         status.textContent = "正在打开…";
         try {
-          const result = await window.pluginBridge.invoke("open.current", {});
+          const result = await window.pluginBridge.invoke("pi-open-in-vscode.open", {});
           showResult(result);
         } catch (error) {
           status.textContent = String(error && error.message ? error.message : error);

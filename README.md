@@ -1,6 +1,8 @@
 # 用 VSCode 打开
 
-PI-Desktop 插件：在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。
+PI-Desktop 插件（`io.github.w1ndys.pi-open-in-vscode`）：在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。
+
+仓库：https://github.com/w1ndys/pi-open-in-vscode
 
 文件管理器商店包没有视图源码，所以做成独立插件，不改已安装的 `pi.file-manager`。
 

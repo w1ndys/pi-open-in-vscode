@@ -6,7 +6,7 @@
 const { spawn } = require("node:child_process");
 const { okResult, failResult } = require("./entity/open-result");
 const { readWorkspacePath } = require("./data/workspace");
-const { buildOpenPlan } = require("./business/open-in-vscode");
+const { buildOpenPlan } = require("./business/pi-open-in-vscode");
 
 /**
  * 等子进程退出，非 0 或 spawn 失败都当成没打开。
@@ -80,7 +80,7 @@ async function openCurrentWorkspace() {
  */
 async function onPanelInvoke(channel, _payload) {
   // 只认打开这一条通道
-  if (channel !== "open.current") {
+  if (channel !== "pi-open-in-vscode.open") {
     return failResult("UNSUPPORTED", "unknown channel: " + channel);
   }
   try {
@@ -95,7 +95,7 @@ async function onPanelInvoke(channel, _payload) {
  */
 async function onLoad() {
   await pi.commands.register({
-    id: "open-in-vscode.open",
+    id: "pi-open-in-vscode.open",
     title: "用 VSCode 打开当前工作目录",
     run: async function () {
       const result = await openCurrentWorkspace();
@@ -113,7 +113,7 @@ async function onLoad() {
  * 插件卸载：摘掉命令。
  */
 async function onUnload() {
-  await pi.commands.unregister("open-in-vscode.open");
+  await pi.commands.unregister("pi-open-in-vscode.open");
 }
 
 module.exports = { onLoad, onUnload, onPanelInvoke };
