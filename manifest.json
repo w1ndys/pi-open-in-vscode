@@ -2,33 +2,53 @@
   "schemaVersion": 1,
   "id": "io.github.w1ndys.pi-open-in-vscode",
   "name": "用 VSCode 打开",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "w1ndys",
-  "description": "用命令立刻用 Visual Studio Code 打开当前工作目录，不再经过侧边栏页面。",
+  "description": "用命令立刻用 Visual Studio Code 打开当前工作目录。",
+  "changelog": "Release 0.3.0：补齐市场要求的 i18n safetyNotes，命令加上关键词与分类；声明 notify 权限用于结果提示。Release 0.2.0：去掉侧边栏页面，改为一条命令立刻打开。Release 0.1.0：首个版本，面板按钮打开当前工作目录。",
+  "license": "MIT",
+  "homepage": "https://github.com/w1ndys/pi-open-in-vscode",
   "main": "main.js",
-  "permissions": [],
+  "permissions": [
+    "notify"
+  ],
   "engines": {
     "piDesktop": ">=0.9.0"
   },
   "categories": [
-    "productivity"
+    "productivity",
+    "developer-tools"
   ],
   "contributes": {
     "commands": [
       {
         "id": "vscode",
-        "title": "用 VSCode 打开当前工作目录"
+        "title": "用 VSCode 打开当前工作目录",
+        "keywords": [
+          "vscode",
+          "code",
+          "editor",
+          "workspace",
+          "open",
+          "编辑器",
+          "工作目录",
+          "打开"
+        ],
+        "category": "Developer"
       }
     ]
   },
+  "safetyNotes": "只做一件事：把当前工作目录交给本机的 Visual Studio Code 打开。不读文件内容、不写文件、不访问网络、不收集任何数据。命令由用户主动触发，插件的进程里以 detached 方式拉起系统命令，拉起后立即返回，不等待编辑器退出。",
   "i18n": {
     "en": {
       "name": "Open in VS Code",
-      "description": "Open the current workspace folder in Visual Studio Code immediately from a command."
+      "description": "Open the current workspace folder in Visual Studio Code with a single command.",
+      "safetyNotes": "Does exactly one thing: hands the current workspace folder to the local Visual Studio Code. It does not read file contents, write files, use the network, or collect data. The command runs only when the user triggers it, spawns the system command detached, and returns immediately without waiting for the editor to exit."
     },
     "zh-CN": {
       "name": "用 VSCode 打开",
-      "description": "用命令立刻用 Visual Studio Code 打开当前工作目录，不再经过侧边栏页面。"
+      "description": "用一条命令立刻用 Visual Studio Code 打开当前工作目录。",
+      "safetyNotes": "只做一件事：把当前工作目录交给本机的 Visual Studio Code 打开。不读文件内容、不写文件、不访问网络、不收集任何数据。命令由用户主动触发，插件的进程里以 detached 方式拉起系统命令，拉起后立即返回，不等待编辑器退出。"
     }
   }
 }
