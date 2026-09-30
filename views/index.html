@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v2" />
+    <title>用 VSCode 打开</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #181818;
+        --fg: #ffffff;
+        --muted: color-mix(in oklab, #ffffff 52%, transparent);
+        --border: color-mix(in oklab, #ffffff 8%, transparent);
+        --accent: #ffffff;
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      :root[data-base="light"] {
+        color-scheme: light;
+        --bg: #fafafa;
+        --fg: #1a1c1f;
+        --muted: #5d5d5d;
+        --border: color-mix(in oklab, #1a1c1f 8%, transparent);
+        --accent: #1a1c1f;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      body {
+        padding: 24px 16px;
+        padding-top: calc(var(--pi-plugin-titlebar-height, 0px) + 24px);
+      }
+      .box {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        max-width: 360px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      button {
+        font: inherit;
+        color: var(--bg);
+        background: var(--accent);
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      #status {
+        min-height: 1.45em;
+        color: var(--muted);
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 入口层视图：只负责点按钮和显示结果 -->
+    <div class="box">
+      <h1>用 VSCode 打开</h1>
+      <p>打开 PI-Desktop 当前工作目录。</p>
+      <button type="button" id="open-btn">用 VSCode 打开当前目录</button>
+      <div id="status" role="status"></div>
+    </div>
+    <script>
+      /** 入口层视图脚本：把点击交给主进程。 */
+      const button = document.getElementById("open-btn");
+      const status = document.getElementById("status");
+
+      /**
+       * 把打开结果写到状态行。
+       * @param {{ ok?: boolean, dir?: string, message?: string }} result
+       */
+      function showResult(result) {
+        // 成功就展示被打开的目录
+        if (result && result.ok) {
+          status.textContent = "已打开：" + result.dir;
+          return;
+        }
+        // 失败展示主进程给的说明
+        if (result && result.message) {
+          status.textContent = result.message;
+          return;
+        }
+        status.textContent = "打开失败。";
+      }
+
+      /**
+       * 点按钮后调用主进程通道。
+       */
+      async function onClick() {
+        button.disabled = true;
+        status.textContent = "正在打开…";
+        try {
+          const result = await window.pluginBridge.invoke("open.current", {});
+          showResult(result);
+        } catch (error) {
+          status.textContent = String(error && error.message ? error.message : error);
+        }
+        button.disabled = false;
+      }
+
+      button.addEventListener("click", function () {
+        onClick();
+      });
+    </script>
+  </body>
+</html>

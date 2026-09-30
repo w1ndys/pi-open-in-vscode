@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.w1ndys.open-in-vscode",
+  "name": "用 VSCode 打开",
+  "version": "0.1.0",
+  "author": "w1ndys",
+  "description": "在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。",
+  "main": "main.js",
+  "permissions": [
+    "ui.view",
+    "shell.openExternal"
+  ],
+  "engines": {
+    "piDesktop": ">=0.9.0"
+  },
+  "categories": [
+    "productivity"
+  ],
+  "contributes": {
+    "views": [
+      {
+        "id": "open",
+        "icon": "folder",
+        "order": 50,
+        "entry": "views/index.html",
+        "title": {
+          "en": "Open in VS Code",
+          "zh-CN": "用 VSCode 打开"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "open-in-vscode.open",
+        "title": "用 VSCode 打开当前工作目录"
+      }
+    ]
+  },
+  "i18n": {
+    "en": {
+      "name": "Open in VS Code",
+      "description": "Open the current workspace folder in Visual Studio Code from a work-panel button."
+    },
+    "zh-CN": {
+      "name": "用 VSCode 打开",
+      "description": "在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。"
+    }
+  }
+}
