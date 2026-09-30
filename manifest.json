@@ -2,13 +2,12 @@
   "schemaVersion": 1,
   "id": "io.github.w1ndys.pi-open-in-vscode",
   "name": "用 VSCode 打开",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "w1ndys",
   "description": "在右侧工作面板点一个按钮，用 Visual Studio Code 打开当前工作目录。",
   "main": "main.js",
   "permissions": [
-    "ui.view",
-    "shell.openExternal"
+    "ui.view"
   ],
   "engines": {
     "piDesktop": ">=0.9.0"

@@ -39,7 +39,8 @@ function vscodeFileUri(dir) {
 }
 
 /**
- * 根据目录生成打开计划：协议 URI 加本机命令备选。
+ * 根据目录生成打开计划：只走本机命令，不弹 vscode:// 确认框。
+ * 插件进程往往没有用户 PATH，所以先 open -a，再试 code。
  * @param {unknown} dir
  */
 function buildOpenPlan(dir) {
@@ -56,8 +57,8 @@ function buildOpenPlan(dir) {
     dir: dir,
     uri: vscodeFileUri(dir),
     spawn: [
-      { command: "code", args: [dir] },
       { command: "/usr/bin/open", args: ["-a", "Visual Studio Code", dir] },
+      { command: "code", args: [dir] },
     ],
   };
 }

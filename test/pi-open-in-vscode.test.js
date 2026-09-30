@@ -39,12 +39,12 @@ describe("buildOpenPlan", function () {
     assert.equal(plan.code, "NO_WORKSPACE");
   });
 
-  it("合法目录带 URI 和两条备选命令", function () {
+  it("合法目录先 open 再 code", function () {
     const plan = buildOpenPlan("/tmp/demo");
     assert.equal(plan.ok, true);
     assert.equal(plan.uri, "vscode://file/tmp/demo");
-    assert.equal(plan.spawn[0].command, "code");
-    assert.equal(plan.spawn[1].command, "/usr/bin/open");
+    assert.equal(plan.spawn[0].command, "/usr/bin/open");
+    assert.equal(plan.spawn[1].command, "code");
   });
 });
 

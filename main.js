@@ -9,57 +9,57 @@ const { readWorkspacePath } = require("./data/workspace");
 const { buildOpenPlan } = require("./business/pi-open-in-vscode");
 
 /**
- * 等子进程退出，非 0 或 spawn 失败都当成没打开。
+ * 拉起命令后立刻返回，不等 VSCode 退出，也不走会弹确认的协议。
  * @param {string} command
  * @param {string[]} args
  * @returns {Promise<void>}
  */
 function runCommand(command, args) {
   return new Promise(function (resolve, reject) {
-    const child = spawn(command, args, { stdio: "ignore" });
-    child.on("error", function (error) {
-      reject(error);
-    });
-    child.on("close", function (code) {
-      // 退出码不是 0 说明本机没打开 VSCode
-      if (code !== 0) {
-        reject(new Error(command + " exited " + String(code)));
+    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    let settled = false;
+    child.once("error", function (error) {
+      // 命令不存在或没法启动
+      if (settled) {
         return;
       }
+      settled = true;
+      reject(error);
+    });
+    child.once("spawn", function () {
+      // 进程已经起来，后台打开即可
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.unref();
       resolve();
     });
   });
 }
 
 /**
- * 按计划依次尝试：协议 URI、code、macOS open。
- * @param {{ ok: true, dir: string, uri: string, spawn: Array<{ command: string, args: string[] }> }} plan
+ * 按计划依次尝试本机命令，点一下就打开。
+ * @param {{ ok: true, dir: string, spawn: Array<{ command: string, args: string[] }> }} plan
  */
 async function executeOpenPlan(plan) {
-  try {
-    await pi.shell.openExternal(plan.uri);
-    return okResult(plan.dir, "uri");
-  } catch (_error) {
-    // vscode:// 没人接就改用本机命令
-  }
-
   let index = 0;
   while (index < plan.spawn.length) {
     const step = plan.spawn[index];
     try {
       await runCommand(step.command, step.args);
-      // code 命令成功
-      if (step.command === "code") {
-        return okResult(plan.dir, "code");
+      // macOS open -a 成功
+      if (step.command === "/usr/bin/open") {
+        return okResult(plan.dir, "open");
       }
-      return okResult(plan.dir, "open");
+      return okResult(plan.dir, "code");
     } catch (_error) {
       // 这一步失败就试下一步
     }
     index += 1;
   }
 
-  return failResult("OPEN_FAILED", "打不开 VSCode。请确认已安装，并在 VSCode 里装过 code 命令。");
+  return failResult("OPEN_FAILED", "打不开 VSCode。请确认已安装 Visual Studio Code。");
 }
 
 /**

@@ -13,7 +13,7 @@ PI-Desktop 插件（`io.github.w1ndys.pi-open-in-vscode`）：在右侧工作面
 3. 右侧工作面板 → 插件视图 →「用 VSCode 打开」。
 4. 点按钮。也可以用命令「用 VSCode 打开当前工作目录」。
 
-打开顺序：`vscode://file` 协议 → `code` 命令 → macOS `open -a "Visual Studio Code"`。
+打开顺序：macOS `open -a "Visual Studio Code"` → `code`。点击即打开，不弹确认。
 
 ## 检查
 
