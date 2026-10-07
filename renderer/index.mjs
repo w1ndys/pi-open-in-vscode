@@ -1,30 +1,35 @@
 /**
- * 渲染器入口：在输入框那一行放一个按钮，并在窗口右下角放一个常驻按钮。
- * 无构建的 ES 模块；react 由宿主窗口的 import map 提供，
- * 角落按钮走自绘层，只用普通 DOM，不依赖 react。
+ * 渲染器入口：在窗口右下角挂一个常驻按钮，只在对话界面里出现。
  *
- * 只有有工作区的对话才有按钮：插槽挂上来先问插件一次 hasWorkspace，
- * 没有工作区就什么都不画——临时会话里插件整个不出现，
- * 也就不存在「点一下去打开一个猜出来的目录」。
+ * 这个模块不注册任何插槽，也不依赖 react：按钮画在宿主给的自绘层里
+ * （pi.ui.openLayer，官方规格 docs/plugin-plan/ui/self-dialog 的自绘层做法）。
+ * 自绘层挂在窗口上，不随页面切换消失，所以「该不该显示」必须自己盯。
  *
- * 角落按钮的存活绑在输入框插槽上：插槽只在对话界面渲染，
- * 所以设置页、插件页、定时任务页都不会出现这个按钮。
- * 这也是官方示例 examples/plugins/ui-slots-lab 的 useLayer 写法（挂载开层、卸载关层）。
+ * 三个条件同时满足才显示：
+ *   1. 宿主渲染出了输入框（.composer-shell）——说明现在真的是对话界面；
+ *   2. 输入框确实露在外面，没有被设置页之类的整页界面盖住；
+ *   3. 这次对话有工作区（插件主进程读一次项目根，拿不到就不显示）。
+ *
+ * 页面切换、输入框重挂都会改 DOM，所以用 MutationObserver 盯，合并成一次检查。
  */
-import { createElement as h, useEffect, useState } from "react";
+
 import { PLUGIN_CSS } from "./styles.mjs";
 import { openCornerButton } from "./corner.mjs";
+
+/** 判断「是不是对话界面」用的输入框类名，取自宿主自己的样式表。 */
+const COMPOSER_SELECTOR = ".composer-shell";
+
+/** 设置页打开时宿主给根容器加的类名：整页界面会把对话盖住，但对话的 DOM 还在。 */
+const SETTINGS_SELECTOR = ".app-shell.settings-mode";
+
+/** 按钮上要画的元素类名，也用来清掉上一次加载残留的层。 */
+const CORNER_SELECTOR = ".pov-corner";
 
 /** 探测「这次对话有没有工作区」的方法名，必须与 manifest.rendererCallMethods 一致。 */
 const PROBE_METHOD = "hasWorkspace";
 
-/** 插件侧 onRendererCall 认的打开方法名，必须与 manifest.rendererCallMethods 一致。 */
+/** 打开当前项目根的方法名，必须与 manifest.rendererCallMethods 一致。 */
 const CALL_METHOD = "openWorkspace";
-
-/** 三种显示状态：还在探测、有工作区、没有工作区。 */
-const STATE_UNKNOWN = "unknown";
-const STATE_YES = "yes";
-const STATE_NO = "no";
 
 /**
  * 插件侧「本次对话没有工作区」的错误码。
@@ -33,26 +38,47 @@ const STATE_NO = "no";
  */
 export const NO_PROJECT_ROOT_CODE = "NO_PROJECT_ROOT";
 
-/** 界面自己认的错误码：这次点击发现没有工作区，按钮该消失。 */
+/** 界面自己认的错误码：这次点击发现没有工作区。 */
 export const NO_SESSION_DIR_CODE = "NO_SESSION_DIR";
 
 /** 没有工作区时留给用户的一句话。 */
 export const NO_WORKSPACE_MESSAGE = "本次对话没有工作区（临时会话），这个按钮已隐藏。";
 
+/** 多次 DOM 变动合并成一次检查的等待时长。 */
+const SYNC_DELAY_MS = 50;
+
+/** 按钮没显示时，最多隔多久重新问一次有没有工作区（用户换会话后按钮能自己回来）。 */
+const REPROBE_INTERVAL_MS = 1500;
+
+/**
+ * 点一次发现没有工作区的说明停留多久再把按钮收掉，留给用户看一眼原因。
+ * 比角落按钮自己的「失败」停留时间略长：先让原因显示完，再收掉整颗按钮。
+ */
+export const HIDE_AFTER_FAIL_MS = 2800;
+
 /** 当前加载周期的 pi。宿主每次加载都给一个新的。 */
 let currentPi = null;
 
-/** 当前打开的角落按钮层。 */
+/** 现在开着的角落按钮层；没开就是 null。 */
 let corner = null;
 
-/** 还挂着的输入框插槽数量。宿主重挂时靠它避免叠出两个按钮。 */
-let cornerHolders = 0;
+/** 上一次看到的输入框元素，用来判断是不是换了输入框（换会话、切页面回来都会重挂）。 */
+let composerElement = null;
 
-/**
- * 上一次探测到的状态，只当挂载时的起点：插槽每次挂上来都会重新探测一次，
- * 所以换会话之后不会一直用上一个会话的结果。
- */
-let workspaceState = STATE_UNKNOWN;
+/** 探测序号：只认最后一次探测的结果，免得旧结果盖掉新结果。 */
+let probeSeq = 0;
+
+/** 上一次探测的时间，用来给「按钮没开时重新问一遍」限速。 */
+let lastProbeAt = 0;
+
+/** 合并 DOM 变动的定时器句柄。 */
+let syncTimer = null;
+
+/** 正在盯的 MutationObserver；没盯就是 null。 */
+let observer = null;
+
+/** 收按钮的定时器句柄。 */
+let hideTimer = null;
 
 /**
  * 应用语言标签。Electron 里 navigator.language 跟随应用语言。
@@ -64,17 +90,186 @@ function currentLanguage() {
 }
 
 /**
- * 派发一次打开。两条入口共用这一条路径。
- * @returns {Promise<unknown>}
+ * 元素是不是真的露在屏幕上。
+ * 用左半边中间那个点做一次命中测试：被整页界面盖住、被挤到视口外、没有尺寸，都不算。
+ * @param {Element} element
+ * @returns {boolean}
  */
-function invokeOpen() {
-  return currentPi.dispatch("plugin.call", { method: CALL_METHOD, args: {} });
+function isOnScreen(element) {
+  const rect = element.getBoundingClientRect();
+  // 没有尺寸（display:none 的祖先、被压成零宽）就没有可测的点
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  // 取左半边中间那个点：避开右下角，免得命中的是插件自己那颗按钮
+  const x = rect.left + rect.width * 0.3;
+  const y = rect.top + rect.height / 2;
+  // 点落在视口外时 elementFromPoint 返回 null
+  const hit = globalThis.document.elementFromPoint(x, y);
+  // 命中点必须是输入框自己，或者是它里面的元素
+  return hit !== null && (hit === element || element.contains(hit));
+}
+/**
+ * 现在该不该显示按钮所依据的输入框。
+ * 没有输入框、输入框被盖住、或者正停在设置页，都返回 null。
+ * @returns {Element | null}
+ */
+function findComposer() {
+  // 设置页是整页界面：对话还挂着但被盖住了，先按页面状态排除
+  if (globalThis.document.querySelector(SETTINGS_SELECTOR)) {
+    return null;
+  }
+  const composers = globalThis.document.querySelectorAll(COMPOSER_SELECTOR);
+  let index = 0;
+  while (index < composers.length) {
+    const composer = composers[index];
+    // 同一个界面里可能有多个输入框，只认真的露在屏幕上的那一个
+    if (isOnScreen(composer)) {
+      return composer;
+    }
+    index += 1;
+  }
+  return null;
+}
+
+/**
+ * 问一次插件有没有工作区，有就把按钮画出来。
+ */
+function askThenShow() {
+  lastProbeAt = Date.now();
+  probeSeq += 1;
+  const seq = probeSeq;
+  probeWorkspace().then(function (hasWorkspace) {
+    // 期间又问过一次、或者已经离开对话界面：这次结果作废
+    if (seq !== probeSeq || composerElement === null) {
+      return;
+    }
+    // 没有工作区就不显示：点下去也不知道该打开哪一个目录
+    if (!hasWorkspace) {
+      hideCorner();
+      return;
+    }
+    showCorner();
+  });
+}
+
+/**
+ * 检查一次当前该不该显示，需要时才开或收。
+ * 导出是给测试直接调用的，正常由 MutationObserver 触发。
+ */
+export function sync() {
+  const composer = findComposer();
+  // 不在对话界面：收起来，并忘掉上一次的输入框
+  if (!composer) {
+    composerElement = null;
+    hideCorner();
+    return;
+  }
+  // 换了输入框（换会话、从别的页面切回来）就立刻重新问一次
+  if (composer !== composerElement) {
+    composerElement = composer;
+    askThenShow();
+    return;
+  }
+  // 还是同一个输入框、按钮却不在（没工作区，或者刚点过一次失败）：
+  // 隔一段时间再问一次，用户切回有工作区的会话时按钮能自己回来
+  if (!corner && Date.now() - lastProbeAt >= REPROBE_INTERVAL_MS) {
+    askThenShow();
+  }
+}
+
+/**
+ * 安排一次检查。DOM 变动很密（流式回复时一直在变），所以合并成一次。
+ */
+function scheduleSync() {
+  // 已经排过一次就等它跑完
+  if (syncTimer !== null) {
+    return;
+  }
+  syncTimer = globalThis.setTimeout(function () {
+    syncTimer = null;
+    sync();
+  }, SYNC_DELAY_MS);
+}
+
+/**
+ * 开始盯 DOM：页面切换、输入框重挂都会产生变动。
+ */
+function startWatching() {
+  observer = new globalThis.MutationObserver(scheduleSync);
+  observer.observe(globalThis.document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden"],
+  });
+}
+
+/**
+ * 停止盯 DOM，清掉还没跑的定时器。
+ */
+function stopWatching() {
+  // 没开过观察器就不用摘
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  // 还没跑的检查一并取消
+  if (syncTimer !== null) {
+    globalThis.clearTimeout(syncTimer);
+    syncTimer = null;
+  }
+  // 还没收的按钮层定时器也取消
+  if (hideTimer !== null) {
+    globalThis.clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+}
+
+/**
+ * 把角落按钮画出来。已经开着就不重复开。
+ */
+function showCorner() {
+  // 还没加载完或者已经开着：都不动
+  if (!currentPi || corner) {
+    return;
+  }
+  corner = openCornerButton(currentPi, globalThis.document, {
+    language: currentLanguage(),
+    invoke: runOpen,
+  });
+}
+
+/**
+ * 收掉角落按钮的层。
+ */
+function hideCorner() {
+  // 没开过就没什么可收的
+  if (!corner) {
+    return;
+  }
+  corner.close();
+  corner = null;
+}
+
+/**
+ * 收掉上一次加载残留的层。
+ * 宿主热重载时会重新加载本模块，上一轮那个实例开出来的层已经没人能关了，
+ * 留着就会一直挂在窗口上——先把它摘掉，再按当前页面重新决定要不要画。
+ */
+function removeStaleLayers() {
+  const stale = globalThis.document.querySelectorAll(CORNER_SELECTOR);
+  let index = 0;
+  while (index < stale.length) {
+    stale[index].remove();
+    index += 1;
+  }
 }
 
 /**
  * 问一次插件：这次对话有没有工作区。
  * 答案不是 true、或宿主拒绝这次调用，都按「没有」处理——
- * 按钮不出现，比打开一个猜出来的目录安全。
+ * 按钮不出现，好过点一下去打开一个猜出来的目录。
  * @returns {Promise<boolean>}
  */
 function probeWorkspace() {
@@ -95,249 +290,67 @@ function probeWorkspace() {
 }
 
 /**
- * 记下这次探测到的状态，供后面重挂的插槽当起点。
- * @param {boolean} hasWorkspace
- * @returns {string} 记下的状态
- */
-function rememberWorkspaceState(hasWorkspace) {
-  workspaceState = hasWorkspace ? STATE_YES : STATE_NO;
-  return workspaceState;
-}
-
-/**
- * 两条入口共用的打开流程。
- * 没有工作区时不再猜目录：记下「没有」，收掉角落按钮，
- * 返回一个稳定的错误码，让输入框按钮自己从这一行撤掉。
+ * 打开流程：成功原样返回；没有工作区时先把原因亮出来，稍后把按钮收掉。
  * @returns {Promise<unknown>}
  */
 export async function runOpen() {
-  const value = await invokeOpen();
-  // 成功就原样交给界面
+  // 还没加载完就没法派发
+  if (!currentPi) {
+    return { ok: false, code: NO_SESSION_DIR_CODE, message: NO_WORKSPACE_MESSAGE };
+  }
+  const value = await currentPi.dispatch("plugin.call", { method: CALL_METHOD, args: {} });
+  // 成功就原样交给按钮去显示「已打开」
   if (value && typeof value === "object" && value.ok === true) {
     return value;
   }
   const code = value && typeof value === "object" ? value.code : null;
-  // 会话切走之后按钮还在：这次点击发现没有工作区，两个按钮都该消失
+  // 没有项目根：这次对话没得打开，让按钮显示原因，随后自己收掉
   if (code === NO_PROJECT_ROOT_CODE) {
-    rememberWorkspaceState(false);
-    closeCorner();
+    scheduleHideCorner();
     return { ok: false, code: NO_SESSION_DIR_CODE, message: NO_WORKSPACE_MESSAGE };
   }
   return value;
 }
 
 /**
- * 输入框插槽挂上来了：有工作区才把角落按钮也开出来。
- * 已经有层就不再开，免得重复挂载时叠出两个按钮。
+ * 稍后再收按钮：让「失败」与原因在按钮上停一会儿，用户看得到。
  */
-export function retainCorner() {
-  cornerHolders += 1;
-  // 还没加载完或已经有层就不动
-  if (!currentPi || corner) {
-    return;
+function scheduleHideCorner() {
+  // 上一次的收尾还没跑就取消，免得两段计时互相打断
+  if (hideTimer !== null) {
+    globalThis.clearTimeout(hideTimer);
   }
-  corner = openCornerButton(currentPi, globalThis.document, {
-    language: currentLanguage(),
-    invoke: runOpen,
-  });
+  hideTimer = globalThis.setTimeout(function () {
+    hideTimer = null;
+    composerElement = null;
+    hideCorner();
+  }, HIDE_AFTER_FAIL_MS);
 }
 
 /**
- * 一个输入框插槽撤了：最后一个撤走时才收掉角落按钮。
- */
-export function releaseCorner() {
-  cornerHolders -= 1;
-  // 还有别的挂载点留着就先不收
-  if (cornerHolders > 0) {
-    return;
-  }
-  cornerHolders = 0;
-  closeCorner();
-}
-
-/**
- * 收掉角落按钮，但不动引用计数。
- * 会话没有工作区时按钮要立刻消失，可插槽还挂着（还要负责重新挂回来）。
- */
-export function closeCorner() {
-  // 没开过就没什么可收的
-  if (!corner) {
-    return;
-  }
-  corner.close();
-  corner = null;
-}
-
-/**
- * 把可能残留的层全部收掉。插件卸载时兜底。
- */
-export function releaseCorners() {
-  cornerHolders = 0;
-  closeCorner();
-}
-
-/**
- * 插件侧回答要显示的一句话：成功不显示文字，失败用插件给的原因。
- * @param {unknown} value 插件侧或打开流程的返回值
- * @returns {string}
- */
-export function messageFor(value) {
-  // 只有明确的 ok:true 才算成功
-  if (value && typeof value === "object" && value.ok === true) {
-    return "";
-  }
-  // 插件侧给了说明就直接用
-  if (value && typeof value === "object" && typeof value.message === "string" && value.message) {
-    return value.message;
-  }
-  return "打开失败。";
-}
-
-/**
- * 一句话该用哪种颜色：成功不写话，失败用错误色。
- * @param {unknown} value 插件侧的返回值
- * @returns {string}
- */
-export function resultKind(value) {
-  // 成功不显示文字，用不上颜色
-  if (value && typeof value === "object" && value.ok === true) {
-    return "";
-  }
-  return "error";
-}
-
-/**
- * 派发被宿主拒绝时按钮上显示的一句话。
- * @param {unknown} error
- * @returns {string}
- */
-export function errorText(error) {
-  const code = error && typeof error === "object" ? String(error.code ?? "") : "";
-  // 宿主给单次调用的预算是 2 秒，超了只说明还在跑
-  if (code === "PLUGIN_CALL_TIMEOUT") {
-    return "打开超时。";
-  }
-  // 插件侧的失败说明优先于通用文案
-  if (error && typeof error === "object" && typeof error.message === "string" && error.message) {
-    return error.message;
-  }
-  return "打开失败。";
-}
-
-/**
- * 输入框工具条右侧的按钮：只在这一行有工作区时才画出来。
- * 它同时是角落按钮的开关：有工作区就开层，没有就什么都不挂。
- * 宿主只把 position 传进来，这里不看它。
- */
-export function OpenButton() {
-  const pair = useState({ status: workspaceState, busy: false, text: "", kind: "" });
-  const state = pair[0];
-  const setState = pair[1];
-
-  // 挂上插槽就探测一次：宿主重挂插槽时会重问，不留上一个会话的结果
-  useEffect(function () {
-    let alive = true;
-    probeWorkspace().then(function (yes) {
-      // 组件已经卸载：别再改状态，也别开层
-      if (!alive) {
-        return;
-      }
-      setState({ status: rememberWorkspaceState(yes), busy: false, text: "", kind: "" });
-      // 角落按钮跟着工作区一起出现或消失
-      if (yes) {
-        retainCorner();
-        return;
-      }
-      closeCorner();
-    });
-    return function () {
-      alive = false;
-      releaseCorner();
-    };
-  }, []);
-
-  /**
-   * 真实点击才能派发，宿主会校验用户手势。
-   */
-  function onClick() {
-    // 已经在打开就忽略重复点击，避免连开多个窗口
-    if (state.busy) {
-      return;
-    }
-    setState({ status: state.status, busy: true, text: "", kind: "" });
-    runOpen().then(
-      function (value) {
-        const code = value && typeof value === "object" ? value.code : null;
-        // 这次点击发现没有工作区：按钮撤掉，只留一句话说明
-        if (code === NO_SESSION_DIR_CODE) {
-          setState({ status: STATE_NO, busy: false, text: messageFor(value), kind: "hint" });
-          return;
-        }
-        setState({
-          status: state.status,
-          busy: false,
-          text: messageFor(value),
-          kind: resultKind(value),
-        });
-      },
-      function (error) {
-        setState({ status: state.status, busy: false, text: errorText(error), kind: "error" });
-      }
-    );
-  }
-
-  // 还在探测、或者已经知道没有工作区又没话可说：这一行不放任何东西
-  if (state.status === STATE_UNKNOWN) {
-    return null;
-  }
-  if (state.status === STATE_NO && state.text === "") {
-    return null;
-  }
-
-  // 没有工作区就不画按钮，这一行最多只留那句说明
-  const button =
-    state.status === STATE_YES
-      ? h(
-          "button",
-          {
-            type: "button",
-            className: "pov-btn",
-            title: "用 VSCode 打开当前工作目录",
-            "aria-label": "用 VSCode 打开当前工作目录",
-            disabled: state.busy,
-            onClick: onClick,
-          },
-          "VSCode"
-        )
-      : null;
-
-  return h(
-    "span",
-    { className: "pov-action", "data-pov": "composer-control" },
-    button,
-    // 失败或「没有工作区」时补一句原因
-    state.text
-      ? h("output", { className: "pov-out", "data-pov-result": state.kind }, state.text)
-      : null
-  );
-}
-
-/**
- * 插件加载：注入样式、注册输入框按钮。
- * 角落按钮不在这里挂——它跟随输入框插槽的探测结果。
+ * 插件加载：注入样式、清掉残留层、开始盯 DOM。
+ * 按钮不在这里画——先看一眼现在是不是对话界面、这次对话有没有工作区。
  * @param {object} pi 宿主给的渲染器 API
  */
 export function onLoad(pi) {
   currentPi = pi;
   pi.ui.injectStyle(PLUGIN_CSS);
-  pi.slots.register({ slot: "composerControl", positions: ["right"], component: OpenButton });
+  removeStaleLayers();
+  composerElement = null;
+  lastProbeAt = 0;
+  startWatching();
+  // 加载时可能已经停在对话界面，先看一眼
+  scheduleSync();
 }
 
 /**
- * 插件卸载：收掉可能还开着的层，松开 pi。
+ * 插件卸载：停掉监听、收掉层、松开 pi。
  */
 export function onUnload() {
-  releaseCorners();
+  stopWatching();
+  hideCorner();
+  composerElement = null;
+  // 让还在飞的探测结果作废
+  probeSeq += 1;
   currentPi = null;
-  workspaceState = STATE_UNKNOWN;
 }

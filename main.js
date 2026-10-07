@@ -43,7 +43,7 @@ async function probeWorkspace() {
 const COMMAND_ID = "vscode";
 const COMMAND_TITLE = "用 VSCode 打开当前工作目录";
 
-/** 输入框按钮与角落按钮共用的方法名，必须与 manifest.rendererCallMethods 一致。 */
+/** 角落按钮用的方法名，必须与 manifest.rendererCallMethods 一致。 */
 const OPEN_ACTION = "openWorkspace";
 
 /** 按钮显示前的探测方法名；同样要出现在 manifest.rendererCallMethods 里。 */
@@ -161,7 +161,7 @@ async function onRendererCall(method, args, runner) {
 
 /**
  * 插件加载：只挂上立刻打开的命令。
- * 界面按钮由 renderer/index.mjs 注册（输入框按钮 + 角落按钮）。
+ * 界面按钮由 renderer/index.mjs 自己画（右下角的角落按钮）。
  */
 async function onLoad() {
   await pi.commands.register({

@@ -3,6 +3,7 @@
  *
  * 依据官方规格 `docs/plugin-plan/ui/self-dialog/`（status: finalized）：
  * 全屏弹窗与角落浮层由插件自理——无槽、无注册，插件在自己的元素里 position: fixed 自画。
+ * 层由 renderer/index.mjs 按当前页面（有没有输入框）决定开或收。
  * 层容器由宿主提供，是 0×0 的 fixed 元素，所以只要自己不铺满屏幕就挡不住别的内容。
  * 定位写法照官方 `apps/desktop/src/plugins/renderer-slots/slot-shell.css` 的 .p-overlay__corner：
  * 铺满视口的 flex 盒子 + pointer-events: none，只让按钮本身接收点击。
@@ -25,7 +26,7 @@ const COPY = {
     busy: "Opening",
     done: "Opened",
     fail: "Failed",
-    hint: "Open the current workspace folder in Visual Studio Code; shown only in conversations that have a workspace.",
+    hint: "Open the current project root in Visual Studio Code; shown only inside the chat view.",
     failedHint: "This button could not open VS Code.",
   },
   "zh-CN": {
@@ -33,7 +34,7 @@ const COPY = {
     busy: "打开中",
     done: "已打开",
     fail: "失败",
-    hint: "用 VSCode 打开当前工作目录；只在有工作区的对话里出现。",
+    hint: "用 VSCode 打开当前项目根；只在对话界面里出现。",
     failedHint: "这个按钮没能打开 VSCode。",
   },
 };
