@@ -38,6 +38,12 @@ function vscodeFileUri(dir) {
   return "vscode://file" + normalized;
 }
 
+/** 「本次对话没有工作区」的稳定错误码，入口层与渲染器都认它。 */
+const NO_PROJECT_ROOT_CODE = "NO_PROJECT_ROOT";
+
+/** 没有工作区时给用户看的一句话；两个按钮不会出现，只有 /vscode 命令看得到它。 */
+const NO_PROJECT_ROOT_MESSAGE = "本次对话没有工作区（临时会话），宿主没有把会话目录给插件，打不开。";
+
 /**
  * 根据目录生成打开计划：只走本机命令，不弹 vscode:// 确认框。
  * 插件进程往往没有用户 PATH，所以先 open -a，再试 code。
@@ -48,8 +54,8 @@ function buildOpenPlan(dir) {
   if (!isAbsoluteDir(dir)) {
     return {
       ok: false,
-      code: "NO_WORKSPACE",
-      message: "当前没有工作目录，先打开一个项目。",
+      code: NO_PROJECT_ROOT_CODE,
+      message: NO_PROJECT_ROOT_MESSAGE,
     };
   }
   return {
@@ -63,4 +69,10 @@ function buildOpenPlan(dir) {
   };
 }
 
-module.exports = { isAbsoluteDir, vscodeFileUri, buildOpenPlan };
+module.exports = {
+  isAbsoluteDir,
+  vscodeFileUri,
+  buildOpenPlan,
+  NO_PROJECT_ROOT_CODE,
+  NO_PROJECT_ROOT_MESSAGE,
+};

@@ -3,7 +3,13 @@
  */
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { isAbsoluteDir, vscodeFileUri, buildOpenPlan } = require("../business/pi-open-in-vscode");
+const {
+  isAbsoluteDir,
+  vscodeFileUri,
+  buildOpenPlan,
+  NO_PROJECT_ROOT_CODE,
+  NO_PROJECT_ROOT_MESSAGE,
+} = require("../business/pi-open-in-vscode");
 const { readWorkspacePath } = require("../data/workspace");
 const { okResult, failResult } = require("../entity/open-result");
 
@@ -33,10 +39,19 @@ describe("vscodeFileUri", function () {
 });
 
 describe("buildOpenPlan", function () {
-  it("没有目录时返回 NO_WORKSPACE", function () {
+  it("没有目录时落到「没有项目根」的兜底", function () {
     const plan = buildOpenPlan(null);
     assert.equal(plan.ok, false);
-    assert.equal(plan.code, "NO_WORKSPACE");
+    assert.equal(plan.code, NO_PROJECT_ROOT_CODE);
+    // 兜底文案要跟入口层一致：说明这次对话没有工作区，不换个入口重试
+    assert.equal(plan.message, NO_PROJECT_ROOT_MESSAGE);
+    assert.match(plan.message, /没有工作区/);
+  });
+
+  it("相对路径也当没有目录", function () {
+    const plan = buildOpenPlan("relative/dir");
+    assert.equal(plan.ok, false);
+    assert.equal(plan.code, NO_PROJECT_ROOT_CODE);
   });
 
   it("合法目录先 open 再 code", function () {
@@ -75,10 +90,10 @@ describe("open-result", function () {
       dir: "/tmp/demo",
       method: "uri",
     });
-    assert.deepEqual(failResult("NO_WORKSPACE", "没有目录"), {
+    assert.deepEqual(failResult(NO_PROJECT_ROOT_CODE, "没有项目根"), {
       ok: false,
-      code: "NO_WORKSPACE",
-      message: "没有目录",
+      code: "NO_PROJECT_ROOT",
+      message: "没有项目根",
     });
   });
 });

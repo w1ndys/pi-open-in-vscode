@@ -32,6 +32,14 @@ export const PLUGIN_CSS = `
   color: var(--ds-text-muted, rgba(127, 127, 127, .9));
   font-size: 12px;
 }
+/* 「本次对话没有工作区」是一句说明，不是打开失败，用强调色区分 */
+.pov-out[data-pov-result="hint"] {
+  color: var(--ds-accent, #4c8dff);
+}
+/* 真正失败才用错误色 */
+.pov-out[data-pov-result="error"] {
+  color: var(--ds-error, #e5534b);
+}
 
 /* ---- 角落按钮（自绘层）----
    定位照官方 renderer-slots/slot-shell.css 的 .p-overlay__corner：

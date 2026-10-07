@@ -25,7 +25,7 @@ const COPY = {
     busy: "Opening",
     done: "Opened",
     fail: "Failed",
-    hint: "Open the current workspace folder in Visual Studio Code.",
+    hint: "Open the current workspace folder in Visual Studio Code; shown only in conversations that have a workspace.",
     failedHint: "This button could not open VS Code.",
   },
   "zh-CN": {
@@ -33,7 +33,7 @@ const COPY = {
     busy: "打开中",
     done: "已打开",
     fail: "失败",
-    hint: "用 VSCode 打开当前工作目录。",
+    hint: "用 VSCode 打开当前工作目录；只在有工作区的对话里出现。",
     failedHint: "这个按钮没能打开 VSCode。",
   },
 };

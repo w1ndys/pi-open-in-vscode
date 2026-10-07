@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.w1ndys.pi-open-in-vscode",
   "name": "用 VSCode 打开",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": "w1ndys",
-  "description": "点一下就用 Visual Studio Code 打开当前工作目录：输入框右侧的小按钮，或窗口右下角常驻的角落按钮；也可以敲 /vscode。",
-  "changelog": "Release 0.5.0：新增窗口右下角的常驻按钮（自绘层，官方规格 docs/plugin-plan/ui/self-dialog 的角落浮层做法），点一次就打开；输入框右侧按钮与 /vscode 命令保留，三条入口共用同一条打开路径。Release 0.4.0：输入框右侧新增一个按钮，点一次就打开（renderer.extension）。Release 0.3.0：补齐插件中心要求的 i18n safetyNotes，命令加上关键词与分类；声明 notify 权限用于结果提示。Release 0.2.0：去掉侧边栏页面，改为一条命令立刻打开。Release 0.1.0：首个版本，面板按钮打开当前工作目录。",
+  "description": "点一下就用 Visual Studio Code 打开当前项目根：输入框右侧的小按钮，或窗口右下角常驻的角落按钮；也可以敲 /vscode。只在有工作区的对话里出现——临时会话（没有项目根）不显示任何按钮，也不猜目录。",
+  "changelog": "Release 0.6.0：打开位置只剩一条规则——**只认当前项目根**。拿得到（项目会话）时，两个按钮与 /vscode 命令直接打开它；拿不到（临时会话）时插件整个不出现：不画按钮、不猜目录、不给替代入口。按钮画出来之前先调一次插件主进程的 hasWorkspace 探测（只读一次 pi.workspace.get()），探测为否或探测失败都不画，所以不存在「点一下打开一个猜出来的目录」。上一轮试过在临时会话里把 /vscode-here 填进输入框、交给宿主解析目录，真机证明宿主的 Agent 扩展同样拿不到会话 scratch（扩展 cwd 是 projectPath ?? process.cwd()，临时会话落到 /），这条交接已撤掉，rendererActions 随之收回只剩 plugin.call。Release 0.5.0：新增窗口右下角的常驻按钮（自绘层，官方规格 docs/plugin-plan/ui/self-dialog 的角落浮层做法），点一次就打开；输入框按钮与 /vscode 命令保留，三条入口共用同一条打开路径。Release 0.4.0：输入框右侧新增一个按钮，点一次就打开（renderer.extension）。Release 0.3.0：补齐插件中心要求的 i18n safetyNotes，命令加上关键词与分类；声明 notify 权限用于结果提示。Release 0.2.0：去掉侧边栏页面，改为一条命令立刻打开。Release 0.1.0：首个版本，面板按钮打开当前工作目录。",
   "license": "MIT",
   "homepage": "https://github.com/w1ndys/pi-open-in-vscode",
   "main": "main.js",
@@ -14,10 +14,12 @@
     "plugin.call"
   ],
   "rendererCallMethods": [
+    "hasWorkspace",
     "openWorkspace"
   ],
   "permissions": [
     "renderer.extension",
+    "agent.extension",
     "notify"
   ],
   "activationEvents": [
@@ -25,7 +27,7 @@
     "onCommand:vscode"
   ],
   "engines": {
-    "piDesktop": ">=0.13.0"
+    "piDesktop": ">=0.15.9"
   },
   "categories": [
     "productivity",
@@ -48,19 +50,22 @@
         ],
         "category": "Developer"
       }
+    ],
+    "agentExtensions": [
+      "extension.mjs"
     ]
   },
-  "safetyNotes": "只做一件事：把当前工作目录交给本机的 Visual Studio Code 打开。三条入口走同一条路径——斜杠命令 /vscode、输入框右侧的按钮、窗口右下角的角落按钮。两个按钮都靠 renderer.extension 提供：一个无构建的 ES 模块被加载进 PI-Desktop 自己的窗口，注册一个插槽组件（输入框按钮）并自绘一个角落按钮，两者都只调用插件主进程的 openWorkspace 一个方法；角落按钮按官方规格的自绘层做法画在自己申请的层里，层容器由宿主提供且是零尺寸，按钮自身不铺满屏幕，因此不遮挡其它内容，插件卸载即消失。不读文件内容、不写文件、不访问网络、不收集任何数据。三种入口都由用户主动触发，插件的进程里以 detached 方式拉起系统命令，拉起后立即返回，不等待编辑器退出。",
+  "safetyNotes": "做一件事：用 Visual Studio Code 打开一个目录。目录只有一条来源，不做推断——按钮与 /vscode 命令读一次 pi.workspace.get() 的当前项目根，取到就直接打开它；取不到就认为本次对话没有工作区（临时会话），此时插件在界面上什么都不显示：输入框按钮与角落按钮都不画，也没有任何替代入口去猜目录。按钮靠 renderer.extension：无构建 ES 模块加载进 PI-Desktop 自己的窗口，只注册一个插槽组件与一个自绘角落按钮；它们只调插件主进程的两个方法——hasWorkspace 探测这次对话有没有工作区，openWorkspace 打开它——不读文件、不拼路径、不枚举目录、不碰剪贴板。角落按钮按官方自绘层规格画在自己申请的零尺寸层里，只在对话界面出现，不遮挡内容。另有一个 Agent 扩展（agent.extension 权限，插件沙箱不覆盖）注册命令 /vscode-here，供宿主日后把会话工作目录交给扩展时使用；它只执行一条写死的命令：用 macOS 的 open -a 打开那个目录，失败退到 code，目录为空、为 / 或为 . 时直接取消并提示，不接受用户输入的命令、不访问网络、不读写文件、不碰凭证。所有入口都由用户主动触发，拉起外部命令后立即返回，不等待编辑器退出。",
   "i18n": {
     "en": {
       "name": "Open in VS Code",
-      "description": "Open the current workspace folder in Visual Studio Code with one click: a small button beside the composer, or the always-there button in the bottom-right corner; the /vscode command works too.",
-      "safetyNotes": "Does exactly one thing: hands the current workspace folder to the local Visual Studio Code. Three entries share one path - the /vscode command, the button to the right of the composer, and the corner button at the bottom right of the window. Both buttons come from renderer.extension: a build-free ES module is loaded into PI-Desktop's own window, registers one slot component (the composer button) and draws one corner button of its own, and both call only the single plugin method openWorkspace. The corner button follows the official self-drawn layer spec, drawing inside a layer it opened; the layer container is host-provided and zero-sized, the button never covers the screen, so it does not block other content, and it disappears when the plugin unloads. It does not read file contents, write files, use the network, or collect data. Every entry runs only when the user triggers it, spawns the system command detached, and returns immediately without waiting for the editor to exit."
+      "description": "Open the open project root in Visual Studio Code with one click: the composer button, the corner button, or the /vscode command. It appears only in conversations that have a workspace; a temporary conversation gets no button at all and nothing is guessed.",
+      "safetyNotes": "Does one thing: opens a directory in Visual Studio Code. The directory has exactly one source, never guessed - the buttons and the /vscode command read the open project root once through pi.workspace.get() and open it directly; when there is none, the conversation is treated as having no workspace (a temporary conversation) and the plugin draws nothing at all: neither the composer button nor the corner button appears, and there is no fallback entry point that would guess a directory. The buttons come from renderer.extension: a build-free ES module loads into PI-Desktop's own window and registers one slot component plus one self-drawn corner button; they call only two methods on the plugin host process - hasWorkspace to detect whether this conversation has a workspace, and openWorkspace to open it - and never read files, compose paths, list directories or touch the clipboard. The corner button follows the official self-drawn layer spec, lives in a zero-sized layer the plugin opens, appears only on the chat surface and never covers content. A separate Agent extension (agent.extension, which the plugin sandbox does not cover) registers the command /vscode-here for a future host that hands the session workspace to extensions; it runs exactly one hard-coded command, opening that directory with macOS open -a and falling back to the code command, cancels with a notice when the directory is empty, / or ., and never takes a command from the user, never uses the network, never reads or writes files and never touches credentials. Every entry runs only when the user triggers it and returns immediately without waiting for the editor to exit."
     },
     "zh-CN": {
       "name": "用 VSCode 打开",
-      "description": "点一下就用 Visual Studio Code 打开当前工作目录：输入框右侧的小按钮，或窗口右下角常驻的角落按钮；也可以敲 /vscode。",
-      "safetyNotes": "只做一件事：把当前工作目录交给本机的 Visual Studio Code 打开。三条入口走同一条路径——斜杠命令 /vscode、输入框右侧的按钮、窗口右下角的角落按钮。两个按钮都靠 renderer.extension 提供：一个无构建的 ES 模块被加载进 PI-Desktop 自己的窗口，注册一个插槽组件（输入框按钮）并自绘一个角落按钮，两者都只调用插件主进程的 openWorkspace 一个方法；角落按钮按官方规格的自绘层做法画在自己申请的层里，层容器由宿主提供且是零尺寸，按钮自身不铺满屏幕，因此不遮挡其它内容，插件卸载即消失。不读文件内容、不写文件、不访问网络、不收集任何数据。三种入口都由用户主动触发，插件的进程里以 detached 方式拉起系统命令，拉起后立即返回，不等待编辑器退出。"
+      "description": "点一下就用 Visual Studio Code 打开当前项目根：输入框按钮、角落按钮，或命令面板里的 /vscode。只在有工作区的对话里出现；临时会话（没有项目根）一个按钮都不显示，也不猜任何目录。",
+      "safetyNotes": "做一件事：用 Visual Studio Code 打开一个目录。目录只有一条来源，不做推断——按钮与 /vscode 命令读一次 pi.workspace.get() 的当前项目根，取到就直接打开它；取不到就认为本次对话没有工作区（临时会话），此时插件在界面上什么都不显示：输入框按钮与角落按钮都不画，也没有任何替代入口去猜目录。按钮靠 renderer.extension：无构建 ES 模块加载进 PI-Desktop 自己的窗口，只注册一个插槽组件与一个自绘角落按钮；它们只调插件主进程的两个方法——hasWorkspace 探测这次对话有没有工作区，openWorkspace 打开它——不读文件、不拼路径、不枚举目录、不碰剪贴板。角落按钮按官方自绘层规格画在自己申请的零尺寸层里，只在对话界面出现，不遮挡内容。另有一个 Agent 扩展（agent.extension 权限，插件沙箱不覆盖）注册命令 /vscode-here，供宿主日后把会话工作目录交给扩展时使用；它只执行一条写死的命令：用 macOS 的 open -a 打开那个目录，失败退到 code，目录为空、为 / 或为 . 时直接取消并提示，不接受用户输入的命令、不访问网络、不读写文件、不碰凭证。所有入口都由用户主动触发，拉起外部命令后立即返回，不等待编辑器退出。"
     }
   }
 }

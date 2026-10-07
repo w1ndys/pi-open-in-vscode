@@ -1,6 +1,9 @@
 /**
  * 渲染器模块单测：用桩 react 加载插件自己的渲染器入口，不启动宿主。
  * 角落按钮走自绘层，DOM 由这里的假实现顶替。
+ *
+ * 注意：桩里的 useState 不会触发重渲染，所以「按钮画出来了没有」用再挂一次插槽来看
+ * ——宿主换会话时本来就会重挂插槽，这条路径和真实行为一致。
  */
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -11,6 +14,9 @@ import { copyFor, labelFor, createCornerButton, openCornerButton } from "../rend
 // 先装解析钩子，import 才会把 react 解析到桩上
 register("./fixtures/react-resolver.mjs", import.meta.url);
 const renderer = await import("../renderer/index.mjs");
+
+// 桩里的清理函数，用来模拟「组件卸载」与「页面切走」
+const { cleanups } = await import("./fixtures/react-stub.mjs");
 
 /**
  * 假 DOM：只实现控件用到的几个方法，点击可以直接触发。
@@ -82,14 +88,15 @@ function deferred() {
 
 /**
  * 假的宿主渲染器 API，记录插件调了它什么。
- * @param {object} [options] { openResult, language }
+ * 按方法名分别回答：hasWorkspace 是显示按钮前的探测，openWorkspace 是真正打开。
+ * @param {object} [options] { hasWorkspace, openResult }
  */
 function fakePi(options) {
   const settings = options || {};
   const calls = { styles: [], slots: [], dispatches: [], layersOpened: 0, layersClosed: 0 };
   const layerElement = fakeDocument().createElement("div");
   const pi = {
-    plugin: { id: "io.github.w1ndys.pi-open-in-vscode", version: "0.5.0" },
+    plugin: { id: "io.github.w1ndys.pi-open-in-vscode", version: "0.6.0" },
     ui: {
       injectStyle: function (css) {
         calls.styles.push(css);
@@ -113,9 +120,17 @@ function fakePi(options) {
     },
     dispatch: function (action, payload) {
       calls.dispatches.push({ action: action, payload: payload });
-      // 默认回答成功；失败分支由用例自己造
+      // 探测：默认这次对话有工作区
+      if (payload && payload.method === "hasWorkspace") {
+        return Promise.resolve({ ok: true, hasWorkspace: settings.hasWorkspace !== false });
+      }
+      // 打开失败：这次对话没有工作区（会话切走之后按钮还在，点下去才发现）
+      if (settings.openResult === "noproject") {
+        return Promise.resolve({ ok: false, code: "NO_PROJECT_ROOT", message: "本次对话没有工作区。" });
+      }
+      // 打开失败：别的错误，界面该原样报错
       if (settings.openResult === "fail") {
-        return Promise.resolve({ ok: false, code: "NO_WORKSPACE", message: "当前没有工作目录，先打开一个项目。" });
+        return Promise.resolve({ ok: false, code: "OPEN_FAILED", message: "打不开。" });
       }
       if (settings.openResult === "reject") {
         return Promise.reject({ code: "PLUGIN_CALL_TIMEOUT", message: "打开超时。" });
@@ -129,6 +144,8 @@ function fakePi(options) {
 afterEach(function () {
   // 用完就摘掉，别影响别的测试文件
   delete globalThis.document;
+  // 未执行的清理函数不该跨用例留下
+  cleanups.length = 0;
 });
 
 describe("文案", function () {
@@ -159,12 +176,12 @@ describe("角落按钮元素", function () {
     assert.equal(ui.button.type, "button");
   });
 
-  it("初始是空闲并带悬停提示", function () {
+  it("初始是空闲并带说明自己只在有工作区的对话里出现的悬停提示", function () {
     const doc = fakeDocument();
     const ui = createCornerButton(doc, { copy: copyFor("zh-CN"), invoke: function () {} });
     assert.equal(ui.phase(), "idle");
     assert.equal(ui.button.textContent, "VSCode");
-    assert.equal(ui.button.title, "用 VSCode 打开当前工作目录。");
+    assert.equal(ui.button.title, "用 VSCode 打开当前工作目录；只在有工作区的对话里出现。");
     assert.equal(ui.button.disabled, false);
   });
 
@@ -262,7 +279,44 @@ describe("自绘层", function () {
 });
 
 describe("渲染器 onLoad", function () {
-  it("注入样式、注册输入框按钮、挂出角落按钮", function () {
+  /** 只取打开动作的派发，探测不掺进来。 */
+  function opensOf(fake) {
+    return fake.calls.dispatches.filter(function (item) {
+      return item.payload && item.payload.method === "openWorkspace";
+    });
+  }
+
+  /** 只取探测的派发。 */
+  function probesOf(fake) {
+    return fake.calls.dispatches.filter(function (item) {
+      return item.payload && item.payload.method === "hasWorkspace";
+    });
+  }
+
+  /**
+   * 挂一次插槽并等探测结算：探测是异步的，宿主挂上组件后就是这样走完的。
+   * @param {object} fake fakePi 的返回
+   */
+  async function mount(fake) {
+    const tree = fake.calls.slots[0].component({ position: "right" });
+    // 探测结果在两轮微任务内落到状态上
+    await Promise.resolve();
+    await Promise.resolve();
+    return tree;
+  }
+
+  /**
+   * 拿到按钮画出来之后的那一帧。
+   * 桩 useState 不重渲染，所以再挂一次插槽——宿主换会话时就是这样重挂的。
+   * @param {object} fake fakePi 的返回
+   * @returns {Promise<object | null>} 这一帧的节点
+   */
+  async function renderButton(fake) {
+    await mount(fake);
+    return fake.calls.slots[0].component({ position: "right" });
+  }
+
+  it("注入样式并注册输入框按钮，不直接挂角落按钮", function () {
     const fake = fakePi();
     globalThis.document = fakeDocument();
     renderer.onLoad(fake.pi);
@@ -270,57 +324,153 @@ describe("渲染器 onLoad", function () {
     assert.equal(fake.calls.slots.length, 1);
     assert.equal(fake.calls.slots[0].slot, "composerControl");
     assert.deepEqual(fake.calls.slots[0].positions, ["right"]);
-    assert.equal(fake.calls.layersOpened, 1);
-    assert.equal(fake.layerElement.children.length, 1);
+    // 角落按钮跟着插槽走：插槽还没渲染时不该有层
+    assert.equal(fake.calls.layersOpened, 0);
     renderer.onUnload();
   });
 
-  it("卸载时关掉自绘层", function () {
+  it("第一帧先探测，探测完才画按钮", async function () {
     const fake = fakePi();
     globalThis.document = fakeDocument();
     renderer.onLoad(fake.pi);
+    // 还没探测出结果的那一帧什么都不画，免得闪一下再消失
+    const first = await mount(fake);
+    assert.equal(first, null);
+    assert.equal(probesOf(fake).length, 1);
+    // 探测只读出结论，不打开任何东西
+    assert.deepEqual(opensOf(fake), []);
+    renderer.onUnload();
+  });
+
+  it("有工作区时插槽挂上就出现角落按钮，卸载就收掉", async function () {
+    const fake = fakePi();
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    // 渲染插槽 = 宿主在对话界面挂上了它
+    await mount(fake);
+    assert.equal(fake.calls.layersOpened, 1);
+    assert.equal(fake.layerElement.children.length, 1);
+    assert.equal(fake.layerElement.children[0].className, "pov-corner");
     renderer.onUnload();
     assert.equal(fake.calls.layersClosed, 1);
+  });
+
+  it("没有工作区时不挂角落按钮", async function () {
+    const fake = fakePi({ hasWorkspace: false });
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    await mount(fake);
+    assert.equal(fake.calls.layersOpened, 0);
+    renderer.onUnload();
+  });
+
+  it("插槽撤走时收掉角落按钮（页面切走）", async function () {
+    const fake = fakePi();
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    await mount(fake);
+    assert.equal(fake.calls.layersOpened, 1);
+    // 插槽的清理函数就是宿主切走页面时调的那个
+    assert.equal(cleanups.length, 1);
+    cleanups.splice(0).forEach(function (run) {
+      run();
+    });
+    assert.equal(fake.calls.layersClosed, 1);
+    renderer.onUnload();
+  });
+
+  it("重复挂载不会叠出第二个按钮", async function () {
+    const fake = fakePi();
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    await mount(fake);
+    await mount(fake);
+    assert.equal(fake.calls.layersOpened, 1);
+    // 只撤掉一个挂载点时层要留着
+    cleanups.splice(0, 1).forEach(function (run) {
+      run();
+    });
+    assert.equal(fake.calls.layersClosed, 0);
+    cleanups.splice(0).forEach(function (run) {
+      run();
+    });
+    assert.equal(fake.calls.layersClosed, 1);
+    renderer.onUnload();
+  });
+
+  it("会话切到没有工作区时，下一次点按钮就把按钮和角落层一起撤掉", async function () {
+    const fake = fakePi({ openResult: "noproject" });
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    // 挂上来时探测说有工作区，按钮出现了
+    const tree = await renderButton(fake);
+    assert.equal(tree.type, "span");
+    assert.equal(fake.calls.layersOpened, 1);
+    // 会话已经切走（渲染器拿不到切换通知），点下去才发现没有工作区
+    const value = await renderer.runOpen();
+    assert.equal(value.code, renderer.NO_SESSION_DIR_CODE);
+    // 角落按钮先收掉，输入框那行下次重挂时不再画按钮
+    assert.equal(fake.calls.layersClosed, 1);
+    assert.equal(fake.calls.slots[0].component({ position: "right" }), null);
+    renderer.onUnload();
   });
 });
 
 describe("按钮组件", function () {
-  it("渲染出一个可点击的按钮", function () {
-    const fake = fakePi();
+  /** 挂上插槽再挂一次，拿到按钮画出来之后的那一帧。 */
+  async function buttonOf(fake) {
     globalThis.document = fakeDocument();
     renderer.onLoad(fake.pi);
+    await fake.calls.slots[0].component({ position: "right" });
+    await Promise.resolve();
     const span = fake.calls.slots[0].component({ position: "right" });
-    assert.equal(span.type, "span");
-    const button = span.props.children[0];
+    return span.props.children[0];
+  }
+
+  it("有工作区时渲染出一个可点击的按钮", async function () {
+    const fake = fakePi();
+    const button = await buttonOf(fake);
     assert.equal(button.type, "button");
     assert.equal(button.props.disabled, false);
     assert.equal(button.props["aria-label"], "用 VSCode 打开当前工作目录");
     renderer.onUnload();
   });
 
-  it("点击派发 plugin.call 调 openWorkspace", function () {
-    const fake = fakePi();
+  it("没有工作区时这一行什么都不画", async function () {
+    const fake = fakePi({ hasWorkspace: false });
     globalThis.document = fakeDocument();
     renderer.onLoad(fake.pi);
-    const button = fake.calls.slots[0].component({}).props.children[0];
+    await fake.calls.slots[0].component({ position: "right" });
+    await Promise.resolve();
+    assert.equal(fake.calls.slots[0].component({ position: "right" }), null);
+    renderer.onUnload();
+  });
+
+  it("点击派发 plugin.call 调 openWorkspace", async function () {
+    const fake = fakePi();
+    const button = await buttonOf(fake);
     button.props.onClick();
-    assert.deepEqual(fake.calls.dispatches, [
+    const opens = fake.calls.dispatches.filter(function (item) {
+      return item.payload.method === "openWorkspace";
+    });
+    assert.deepEqual(opens, [
       { action: "plugin.call", payload: { method: "openWorkspace", args: {} } },
     ]);
     renderer.onUnload();
   });
 
-  it("两条入口派发的是同一个调用", function () {
+  it("两条入口派发的是同一个调用", async function () {
     const fake = fakePi();
-    globalThis.document = fakeDocument();
-    renderer.onLoad(fake.pi);
-    const button = fake.calls.slots[0].component({}).props.children[0];
+    const button = await buttonOf(fake);
     button.props.onClick();
     // 角落按钮走同一条路径
     const cornerButton = fake.layerElement.children[0].children[0];
     cornerButton.click();
-    assert.equal(fake.calls.dispatches.length, 2);
-    assert.deepEqual(fake.calls.dispatches[0], fake.calls.dispatches[1]);
+    const opens = fake.calls.dispatches.filter(function (item) {
+      return item.payload.method === "openWorkspace";
+    });
+    assert.equal(opens.length, 2);
+    assert.deepEqual(opens[0], opens[1]);
     renderer.onUnload();
   });
 });
@@ -331,13 +481,18 @@ describe("结果文案", function () {
   });
 
   it("失败时用插件给的说明", function () {
-    const value = { ok: false, code: "NO_WORKSPACE", message: "当前没有工作目录，先打开一个项目。" };
-    assert.equal(renderer.messageFor(value), "当前没有工作目录，先打开一个项目。");
+    const value = { ok: false, code: "NO_PROJECT_ROOT", message: "本次对话没有工作区。" };
+    assert.equal(renderer.messageFor(value), "本次对话没有工作区。");
   });
 
   it("没有说明时给通用文案", function () {
     assert.equal(renderer.messageFor({ ok: false }), "打开失败。");
     assert.equal(renderer.messageFor(null), "打开失败。");
+  });
+
+  it("成功不写话，失败用错误色", function () {
+    assert.equal(renderer.resultKind({ ok: true }), "");
+    assert.equal(renderer.resultKind({ ok: false, code: "OPEN_FAILED" }), "error");
   });
 
   it("宿主超时单独提示", function () {
@@ -349,6 +504,52 @@ describe("结果文案", function () {
   });
 });
 
+describe("没有工作区的处理", function () {
+  /** 只取动作与方法名，断言派发内容更方便。 */
+  function callsOf(fake) {
+    return fake.calls.dispatches.map(function (item) {
+      return item.payload.method;
+    });
+  }
+
+  it("没有工作区时只说明一句，不给替代入口", function () {
+    const fake = fakePi({ openResult: "noproject" });
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    return renderer.runOpen().then(function (value) {
+      // 只调了打开这一个方法：既不猜目录，也不往输入框里塞命令
+      assert.deepEqual(callsOf(fake), ["openWorkspace"]);
+      assert.equal(value.ok, false);
+      assert.equal(value.code, renderer.NO_SESSION_DIR_CODE);
+      assert.equal(value.message, renderer.NO_WORKSPACE_MESSAGE);
+      renderer.onUnload();
+    });
+  });
+
+  it("别的失败原样返回", function () {
+    const fake = fakePi({ openResult: "fail" });
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    return renderer.runOpen().then(function (value) {
+      assert.deepEqual(callsOf(fake), ["openWorkspace"]);
+      assert.equal(value.ok, false);
+      assert.equal(value.code, "OPEN_FAILED");
+      renderer.onUnload();
+    });
+  });
+
+  it("有项目根时正常返回", function () {
+    const fake = fakePi();
+    globalThis.document = fakeDocument();
+    renderer.onLoad(fake.pi);
+    return renderer.runOpen().then(function (value) {
+      assert.deepEqual(callsOf(fake), ["openWorkspace"]);
+      assert.equal(value.dir, "/tmp/demo");
+      renderer.onUnload();
+    });
+  });
+});
+
 describe("manifest 与代码一致", function () {
   const manifest = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
 
@@ -357,9 +558,9 @@ describe("manifest 与代码一致", function () {
     assert.equal(manifest.permissions.includes("renderer.extension"), true);
   });
 
-  it("白名单覆盖两个按钮实际用的动作与方法", function () {
-    assert.equal(manifest.rendererActions.includes("plugin.call"), true);
-    assert.equal(manifest.rendererCallMethods.includes("openWorkspace"), true);
+  it("白名单只留打开与探测两个方法，动作只剩 plugin.call", function () {
+    assert.deepEqual(manifest.rendererActions, ["plugin.call"]);
+    assert.deepEqual(manifest.rendererCallMethods, ["hasWorkspace", "openWorkspace"]);
   });
 
   it("不再声明独立窗口那一套", function () {
@@ -382,5 +583,8 @@ describe("manifest 与代码一致", function () {
     // 铺满视口的盒子必须不吃点击，否则会挡住界面
     assert.equal(/\.pov-corner\s*\{[^}]*pointer-events:\s*none/.test(css), true);
     assert.equal(/\.pov-corner\s*>\s*\*\s*\{[^}]*pointer-events:\s*auto/.test(css), true);
+    // 说明与失败各有一份样式
+    assert.equal(css.includes('[data-pov-result="hint"]'), true);
+    assert.equal(css.includes('[data-pov-result="error"]'), true);
   });
 });
