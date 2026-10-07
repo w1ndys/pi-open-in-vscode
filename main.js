@@ -1,6 +1,7 @@
 /**
  * 入口层：PI-Desktop 插件主进程。
- * 斜杠命令和输入框右侧的按钮都走到这里，再调数据层和业务层打开 VSCode。
+ * 两条入口——输入框按钮与右下角角落按钮——都走到这里，
+ * 再调数据层和业务层打开 VSCode；斜杠命令走同一条路径。
  */
 
 const { spawn } = require("node:child_process");
@@ -8,14 +9,14 @@ const { okResult, failResult } = require("./entity/open-result");
 const { readWorkspacePath } = require("./data/workspace");
 const { buildOpenPlan } = require("./business/pi-open-in-vscode");
 
-/** 按钮调用认的方法名，必须与 manifest.rendererCallMethods 一致。 */
-const OPEN_METHOD = "openWorkspace";
+/** 输入框按钮与角落按钮共用的方法名，必须与 manifest.rendererCallMethods 一致。 */
+const OPEN_ACTION = "openWorkspace";
 
-/** 命令 id 和标题。斜杠与命令面板共用同一个 id。 */
+/** 命令 id 与标题。斜杠与命令面板共用同一个 id。 */
 const COMMAND_ID = "vscode";
 const COMMAND_TITLE = "用 VSCode 打开当前工作目录";
 
-/** 成功提示。两条入口共用同一句话。 */
+/** 成功提示。所有入口共用同一句话。 */
 const SUCCESS_MESSAGE = "已用 VSCode 打开";
 
 /**
@@ -75,7 +76,7 @@ async function executeOpenPlan(plan, runner) {
 }
 
 /**
- * 读当前工作目录并打开。斜杠命令和按钮共用这条路径。
+ * 读当前工作目录并打开。
  * @param {Function} [runner] 测试注入的执行器
  */
 async function openCurrentWorkspace(runner) {
@@ -89,18 +90,12 @@ async function openCurrentWorkspace(runner) {
 }
 
 /**
- * 输入框按钮的入口：只认一个方法，结果与斜杠命令完全一致。
- * @param {unknown} method manifest.rendererCallMethods 里的方法名
- * @param {unknown} args 按钮不传参数
+ * 打开并提示。所有入口共用，保证行为和文案不会各走一套。
  * @param {Function} [runner] 测试注入的执行器
  */
-async function onRendererCall(method, args, runner) {
-  // 不认识的方法直接拒绝，不猜意图
-  if (method !== OPEN_METHOD) {
-    return failResult("UNKNOWN_METHOD", "不支持的操作。");
-  }
+async function openAndAnnounce(runner) {
   const result = await openCurrentWorkspace(runner);
-  // 失败原因用 toast 说明，与斜杠命令同一套提示
+  // 失败时用 toast 说明原因
   if (!result.ok) {
     await pi.ui.showToast(result.message);
     return result;
@@ -110,20 +105,29 @@ async function onRendererCall(method, args, runner) {
 }
 
 /**
- * 插件加载：挂上立刻打开的命令。按钮由 renderer/index.mjs 注册。
+ * 按钮入口的调用：只认一个方法，不认识的直接拒绝，不猜意图。
+ * @param {unknown} method manifest.rendererCallMethods 里的方法名
+ * @param {unknown} args 按钮不传参数
+ * @param {Function} [runner] 测试注入的执行器
+ */
+async function onRendererCall(method, args, runner) {
+  // 不认识的方法直接拒绝
+  if (method !== OPEN_ACTION) {
+    return failResult("UNKNOWN_METHOD", "不支持的操作。");
+  }
+  return openAndAnnounce(runner);
+}
+
+/**
+ * 插件加载：挂上立刻打开的命令。
+ * 界面按钮由 renderer/index.mjs 注册（输入框按钮 + 角落按钮）。
  */
 async function onLoad() {
   await pi.commands.register({
     id: COMMAND_ID,
     title: COMMAND_TITLE,
     run: async function () {
-      const result = await openCurrentWorkspace();
-      // 失败时用 toast 告诉用户原因
-      if (!result.ok) {
-        await pi.ui.showToast(result.message);
-        return;
-      }
-      await pi.ui.showToast(SUCCESS_MESSAGE);
+      await openAndAnnounce();
     },
   });
 }
@@ -140,9 +144,10 @@ module.exports = {
   onUnload,
   onRendererCall,
   openCurrentWorkspace,
+  openAndAnnounce,
   executeOpenPlan,
   COMMAND_ID,
   COMMAND_TITLE,
   SUCCESS_MESSAGE,
-  OPEN_METHOD,
+  OPEN_ACTION,
 };

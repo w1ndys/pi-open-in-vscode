@@ -22,9 +22,11 @@ function installFakePi(workspace) {
         toasts.push(message);
       },
     },
+    // 按顺序记下注册过的命令
+    registered: [],
     commands: {
       register: async function (descriptor) {
-        globalThis.pi.registered = descriptor;
+        globalThis.pi.registered.push(descriptor);
       },
       unregister: async function () {},
     },
@@ -46,7 +48,7 @@ describe("onRendererCall", function () {
     const runner = async function () {
       launched += 1;
     };
-    const result = await main.onRendererCall(main.OPEN_METHOD, {}, runner);
+    const result = await main.onRendererCall(main.OPEN_ACTION, {}, runner);
     assert.equal(result.code, "NO_WORKSPACE");
     assert.equal(launched, 0);
     assert.equal(toasts[0], "当前没有工作目录，先打开一个项目。");
@@ -58,7 +60,7 @@ describe("onRendererCall", function () {
     const runner = async function (command) {
       launched.push(command);
     };
-    const result = await main.onRendererCall(main.OPEN_METHOD, {}, runner);
+    const result = await main.onRendererCall(main.OPEN_ACTION, {}, runner);
     assert.equal(result.ok, true);
     assert.equal(result.dir, "/tmp/demo");
     assert.equal(result.method, "open");
@@ -76,7 +78,7 @@ describe("onRendererCall", function () {
         throw new Error("no such command");
       }
     };
-    const result = await main.onRendererCall(main.OPEN_METHOD, {}, runner);
+    const result = await main.onRendererCall(main.OPEN_ACTION, {}, runner);
     assert.equal(result.method, "code");
     assert.deepEqual(launched, ["/usr/bin/open", "code"]);
     assert.equal(toasts[0], main.SUCCESS_MESSAGE);
@@ -87,7 +89,7 @@ describe("onRendererCall", function () {
     const runner = async function () {
       throw new Error("no such command");
     };
-    const result = await main.onRendererCall(main.OPEN_METHOD, {}, runner);
+    const result = await main.onRendererCall(main.OPEN_ACTION, {}, runner);
     assert.equal(result.code, "OPEN_FAILED");
     assert.equal(result.message, "打不开 VSCode。请确认已安装 Visual Studio Code。");
     assert.equal(toasts[0], result.message);
@@ -98,8 +100,11 @@ describe("斜杠命令", function () {
   it("onLoad 仍注册原来的命令 id 与标题", async function () {
     installFakePi({ path: "/tmp/demo" });
     await main.onLoad();
-    assert.equal(globalThis.pi.registered.id, main.COMMAND_ID);
-    assert.equal(globalThis.pi.registered.title, main.COMMAND_TITLE);
-    assert.equal(typeof globalThis.pi.registered.run, "function");
+    const first = globalThis.pi.registered[0];
+    assert.equal(first.id, main.COMMAND_ID);
+    assert.equal(first.title, main.COMMAND_TITLE);
+    assert.equal(typeof first.run, "function");
+    // 现在只有这一条命令；两个界面按钮由渲染器自己挂
+    assert.equal(globalThis.pi.registered.length, 1);
   });
 });

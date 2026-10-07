@@ -1,15 +1,37 @@
 /**
- * 渲染器入口：在输入框那一行放一个「用 VSCode 打开」按钮。
- * 无构建的 ES 模块；react 由宿主窗口的 import map 提供。
+ * 渲染器入口：在输入框那一行放一个按钮，并在窗口右下角放一个常驻按钮。
+ * 无构建的 ES 模块；react 由宿主窗口的 import map 提供，
+ * 角落按钮走自绘层，只用普通 DOM，不依赖 react。
  */
 import { createElement as h, useState } from "react";
-import { BUTTON_CSS } from "./styles.mjs";
+import { PLUGIN_CSS } from "./styles.mjs";
+import { openCornerButton } from "./corner.mjs";
 
 /** 插件侧 onRendererCall 认的方法名，必须与 manifest.rendererCallMethods 一致。 */
 const CALL_METHOD = "openWorkspace";
 
 /** 当前加载周期的 pi。宿主每次加载都给一个新的。 */
 let currentPi = null;
+
+/** 当前打开的角落按钮层。 */
+let corner = null;
+
+/**
+ * 应用语言标签。Electron 里 navigator.language 跟随应用语言。
+ * @returns {string}
+ */
+function currentLanguage() {
+  const nav = globalThis.navigator;
+  return nav && typeof nav.language === "string" ? nav.language : "en";
+}
+
+/**
+ * 派发一次打开。两条入口共用这一条路径。
+ * @returns {Promise<unknown>}
+ */
+function invokeOpen() {
+  return currentPi.dispatch("plugin.call", { method: CALL_METHOD, args: {} });
+}
 
 /**
  * 插件侧回答成功时返回空串，失败时返回要显示的一句话。
@@ -64,7 +86,7 @@ export function OpenButton() {
       return;
     }
     setState({ busy: true, text: "" });
-    currentPi.dispatch("plugin.call", { method: CALL_METHOD, args: {} }).then(
+    invokeOpen().then(
       function (value) {
         setState({ busy: false, text: messageFor(value) });
       },
@@ -97,18 +119,27 @@ export function OpenButton() {
 }
 
 /**
- * 插件加载：注册按钮插槽。
+ * 插件加载：注入样式、注册输入框按钮、挂出角落按钮。
  * @param {object} pi 宿主给的渲染器 API
  */
 export function onLoad(pi) {
   currentPi = pi;
-  pi.ui.injectStyle(BUTTON_CSS);
+  pi.ui.injectStyle(PLUGIN_CSS);
   pi.slots.register({ slot: "composerControl", positions: ["right"], component: OpenButton });
+  corner = openCornerButton(pi, globalThis.document, {
+    language: currentLanguage(),
+    invoke: invokeOpen,
+  });
 }
 
 /**
- * 插件卸载：宿主会撤掉本次加载注册的插槽与样式，这里只松开 pi。
+ * 插件卸载：关掉自绘层，松开 pi。
  */
 export function onUnload() {
+  // 层是本次加载开的，主动关一次
+  if (corner) {
+    corner.close();
+    corner = null;
+  }
   currentPi = null;
 }
