@@ -3,6 +3,6 @@
   "private": true,
   "description": "PI-Desktop 插件：用 VSCode 打开当前工作目录。",
   "scripts": {
-    "check": "node --check entity/open-result.js && node --check data/workspace.js && node --check business/pi-open-in-vscode.js && node --check main.js && node --check extension.mjs && node --check renderer/styles.mjs && node --check renderer/corner.mjs && node --check renderer/index.mjs && node --check test/pi-open-in-vscode.test.js && node --check test/renderer-call.test.js && node --check test/renderer.test.mjs && node --check test/extension.test.mjs && node --test test/pi-open-in-vscode.test.js test/renderer-call.test.js test/renderer.test.mjs test/extension.test.mjs"
+    "check": "node --check entity/open-result.js && node --check data/workspace.js && node --check business/pi-open-in-vscode.js && node --check main.js && node --check renderer/styles.mjs && node --check renderer/corner.mjs && node --check renderer/index.mjs && node --check test/pi-open-in-vscode.test.js && node --check test/renderer-call.test.js && node --check test/renderer.test.mjs && node --test test/pi-open-in-vscode.test.js test/renderer-call.test.js test/renderer.test.mjs"
   }
 }

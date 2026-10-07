@@ -8,12 +8,16 @@
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { register } from "node:module";
+import { createRequire, register } from "node:module";
 import { copyFor, labelFor, createCornerButton, openCornerButton } from "../renderer/corner.mjs";
 
 // 先装解析钩子，import 才会把 react 解析到桩上
 register("./fixtures/react-resolver.mjs", import.meta.url);
 const renderer = await import("../renderer/index.mjs");
+
+// 业务层是 CommonJS，用 createRequire 在 ESM 里加载它做字面量比对
+const require = createRequire(import.meta.url);
+const business = require("../business/pi-open-in-vscode.js");
 
 // 桩里的清理函数，用来模拟「组件卸载」与「页面切走」
 const { cleanups } = await import("./fixtures/react-stub.mjs");
@@ -586,5 +590,27 @@ describe("manifest 与代码一致", function () {
     // 说明与失败各有一份样式
     assert.equal(css.includes('[data-pov-result="hint"]'), true);
     assert.equal(css.includes('[data-pov-result="error"]'), true);
+  });
+
+  it("不再声明 Agent 扩展与 agent.extension 权限", function () {
+    // 摘掉的原因见 manifest.changelog：那条路在临时会话里拿不到会话目录，
+    // 在有工作区的对话里又与 /vscode 完全等效，却要一个能在 sidecar 里执行命令的重权限
+    assert.equal(manifest.permissions.includes("agent.extension"), false);
+    assert.equal(manifest.contributes.agentExtensions, undefined);
+  });
+
+  it("渲染器不再引用扩展命令，也不再往输入框里塞东西", function () {
+    // 交接与扩展都撤掉了。直接读源码断言，防止这条被撤掉的路悄悄回来。
+    const source = readFileSync(new URL("../renderer/index.mjs", import.meta.url), "utf8");
+    assert.equal(source.includes("vscode-here"), false);
+    assert.equal(source.includes("composer.insertText"), false);
+    assert.equal(source.includes("composer.readDraft"), false);
+  });
+});
+
+describe("跨模块字面量一致", function () {
+  it("渲染器认的「没有工作区」错误码与业务层相同", function () {
+    // 防漂移：两边不一致时按钮会把入口层的报错直接亮给用户，而不是把自己撤掉
+    assert.equal(renderer.NO_PROJECT_ROOT_CODE, business.NO_PROJECT_ROOT_CODE);
   });
 });

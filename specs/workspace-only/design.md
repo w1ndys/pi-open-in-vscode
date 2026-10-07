@@ -19,8 +19,8 @@
 | `renderer/index.mjs` | 删掉 `composer.readDraft` / `composer.insertText` 交接；新增挂载时探测与三种显示状态（unknown / yes / no），没有工作区就返回 `null`；`runOpen()` 把 `NO_PROJECT_ROOT` 转成 `NO_SESSION_DIR` 并收掉角落层 |
 | `renderer/corner.mjs` | 删掉 `PHASE_HANDOFF` 与「已填入」文案；悬停提示改成「只在有工作区的对话里出现」 |
 | `renderer/styles.mjs` | 只改注释：强调色那条从「交接提示」改成「没有工作区的说明」 |
-| `manifest.json` | `rendererActions` 收回 `["plugin.call"]`，`rendererCallMethods` 变 `["hasWorkspace","openWorkspace"]`；description / changelog / safetyNotes / i18n 按新行为改写；版本仍 `0.6.0` |
-| 删除 | `specs/session-open/`（它描述的交接已被撤掉），换成 `specs/workspace-only/` |
+| `manifest.json` | `rendererActions` 收回 `["plugin.call"]`，`rendererCallMethods` 变 `["hasWorkspace","openWorkspace"]`；去掉 `agent.extension` 权限与 `contributes.agentExtensions`；description / changelog / safetyNotes / i18n 按新行为改写；版本仍 `0.6.0` |
+| 删除 | `specs/session-open/`（它描述的交接已被撤掉），换成 `specs/workspace-only/`；`extension.mjs` 与 `test/extension.test.mjs`（Agent 扩展整条路撤掉，见下） |
 
 ## 关键决定
 
@@ -28,7 +28,7 @@
 - **切会话不订阅事件，靠两处兜住**：挂载时探测一次（宿主换会话会重挂插槽），点击时发现没有工作区就把按钮撤掉。渲染器拿不到会话切换通知，这是能做到的最紧的兜底。
 - **状态缓存只有一个作用**：`useState` 的初始值用上一次的结论，重挂时不会先空一下再画出来；本次探测结果永远覆盖它，插件卸载时清回 `unknown`。
 - **没有工作区就不留入口**：不给「填一条命令」「指向别的命令」这类替代路径——两条路都验过，临时会话里都走不通，留着只会让用户白按一次。
-- **扩展保留但只注册命令**：`/vscode-here` 仍在，`resolveDirectory()` 对空、`/`、`.` 一律取消（绝不打开系统根）。它当下在项目会话里与 `/vscode` 等效，等 #1459 修好之后才是临时会话那条路。
+- **扩展整条路撤掉**：`agent.extension` 是一个能在 Agent sidecar 内执行命令的重权限，而扩展只在有工作区的对话里能干活（与 `/vscode` 完全等效），临时会话里拿到的是系统根、必须取消。付出与收益不成比例，所以删掉 `extension.mjs`，不声明该权限。等 #1459 修好、扩展真能拿到会话目录时再加回来（那时它才是临时会话唯一的路）。源码在 git 历史里，恢复不需要重写。
 
 ## 已知限制
 
@@ -37,4 +37,4 @@
 
 ## 检查
 
-`npm run check`：`node --check` 全部 js/mjs，再跑 4 个测试文件（业务层、主进程入口、渲染器模块、Agent 扩展），共 71 项。渲染器测试用 `test/fixtures/react-stub.mjs` 顶替 react、用测试内的小假 DOM，不启动宿主。
+`npm run check`：`node --check` 全部 js/mjs，再跑 3 个测试文件（业务层、主进程入口、渲染器模块），共 60 项。渲染器测试用 `test/fixtures/react-stub.mjs` 顶替 react、用测试内的小假 DOM，不启动宿主；跨模块常量一致（渲染器与业务层的 `NO_PROJECT_ROOT_CODE`）与「不再声明 agent.extension」也在这一份里断言。
