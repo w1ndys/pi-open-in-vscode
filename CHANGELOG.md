@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布
+
+- Windows 不再调用 `/usr/bin/open`，也不再 spawn 无扩展名的 `code`。那个文件是 shell 脚本，Node 会先命中它，于是已安装也会提示「请确认已安装」。现在先定位 `Code.exe`（PATH 中的 `code.cmd`、默认安装目录、注册表），找不到再显式启动 `code.cmd`。直接拉起 `Code.exe` 时去掉继承来的 `ELECTRON_RUN_AS_NODE`。
+
 ## 0.6.0
 
 - **新增跨插件的「右下角按钮带」约定**：角落按钮带 `data-pi-corner-button` 标记；同窗口里所有这类按钮按 DOM 顺序从右下角往上排，靠后的按下面几颗按钮的高度用 `transform: translateY()` 让位，只改绘制不改布局，别家量到的仍是真实高度。起因是真机上和 `pi-open-git-web` 的角落按钮叠在了一起——宿主没有角落槽位，每个插件都用 `pi.ui.openLayer()` 各自往右下角画，位置只能插件之间自己约定。
