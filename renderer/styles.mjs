@@ -33,6 +33,8 @@ export const PLUGIN_CSS = `
   cursor: pointer;
   backdrop-filter: blur(12px);
   box-shadow: 0 4px 14px rgba(0, 0, 0, .28);
+  /* 让位用 transform，这里给个短过渡，别家插件出现/消失时是滑过去而不是跳 */
+  transition: transform 120ms ease;
 }
 .pov-corner-btn:hover:not(:disabled) {
   background: var(--ds-bg-hover, rgba(64, 64, 64, .92));

@@ -7,7 +7,12 @@
  * 层容器由宿主提供，是 0×0 的 fixed 元素，所以只要自己不铺满屏幕就挡不住别的内容。
  * 定位写法照官方 `apps/desktop/src/plugins/renderer-slots/slot-shell.css` 的 .p-overlay__corner：
  * 铺满视口的 flex 盒子 + pointer-events: none，只让按钮本身接收点击。
+ *
+ * 按钮会带上 CORNER_BUTTON_ATTR 标记，加入「右下角按钮带」：
+ * 同窗口里别的角落按钮一起按 DOM 顺序从右下角往上排，谁都不会压着谁。
  */
+
+import { CORNER_BUTTON_ATTR } from "./corner-stack.mjs";
 
 /** 按钮的四个状态，决定显示哪个字。 */
 export const PHASE_IDLE = "idle";
@@ -204,6 +209,8 @@ export function createCornerButton(doc, options) {
   const button = doc.createElement("button");
   button.type = "button";
   button.className = "pov-corner-btn";
+  // 加入「右下角按钮带」：别的插件按这个属性把彼此排开（见 corner-stack.mjs）
+  button.setAttribute(CORNER_BUTTON_ATTR, "");
   overlay.appendChild(button);
 
   const state = createState(options);
@@ -243,7 +250,12 @@ export function openCornerButton(pi, doc, options) {
   });
   layer.element.appendChild(button.element);
   return {
-    button: button,
+    element: button.element,
+    button: button.button,
+    /** 当前状态，测试用。 */
+    phase: button.phase,
+    /** 手动触发一次点击，测试用。 */
+    click: button.click,
     /** 关掉层。插件卸载时宿主也会收，这里主动关一次更干净。 */
     close: function () {
       layer.close();

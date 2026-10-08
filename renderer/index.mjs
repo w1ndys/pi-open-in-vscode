@@ -15,6 +15,7 @@
 
 import { PLUGIN_CSS } from "./styles.mjs";
 import { openCornerButton } from "./corner.mjs";
+import { stackCornerButton } from "./corner-stack.mjs";
 
 /** 判断「是不是对话界面」用的输入框类名，取自宿主自己的样式表。 */
 const COMPOSER_SELECTOR = ".composer-shell";
@@ -154,10 +155,19 @@ function askThenShow() {
 }
 
 /**
- * 检查一次当前该不该显示，需要时才开或收。
+ * 检查一次当前该不该显示，需要时才开或收；顺带把按钮带重排一次。
  * 导出是给测试直接调用的，正常由 MutationObserver 触发。
  */
 export function sync() {
+  syncVisibility();
+  // 别的插件可能刚出现或刚消失：不管这次该不该显示，都重排一次按钮带
+  restackCorner();
+}
+
+/**
+ * 按当前页面决定开还是收按钮。
+ */
+function syncVisibility() {
   const composer = findComposer();
   // 不在对话界面：收起来，并忘掉上一次的输入框
   if (!composer) {
@@ -238,6 +248,19 @@ function showCorner() {
     language: currentLanguage(),
     invoke: runOpen,
   });
+  // 刚挂上，先量一次：别的插件已经在的话，自己要让到它们上面
+  restackCorner();
+}
+
+/**
+ * 让按钮带重排一次。只有角落按钮开着的时候才有事可做。
+ */
+function restackCorner() {
+  // 没开着按钮就没什么可排
+  if (!corner) {
+    return;
+  }
+  stackCornerButton(globalThis.document, corner.button);
 }
 
 /**

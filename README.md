@@ -50,6 +50,12 @@ Agent 扩展这条路也验过，同样拿不到：扩展的 cwd 是 `projectPat
 - **角落按钮**走「自绘层」：`docs/plugin-plan/ui/self-dialog/`（status: finalized）写明「全屏弹窗与角落浮层由插件自理——无槽、无注册，插件在自己的元素里 `position: fixed` 自画」。定位照官方 `apps/desktop/src/plugins/renderer-slots/slot-shell.css` 的 `.p-overlay__corner`：铺满视口的 flex 盒子把按钮推到右下角，盒子本身 `pointer-events: none`、只有按钮 `auto`，所以它**不挡**下面的内容。层容器由宿主提供，是零尺寸的 fixed 元素。
 - 想换到左下角：把 `renderer/styles.mjs` 里 `.pov-corner` 的 `justify-content: flex-end` 改成 `flex-start`。
 
+## 和别的插件排开（右下角按钮带）
+
+宿主没有「角落」槽位，每个插件都是自己往右下角画，所以位置靠一条跨插件约定协商：**凡是在右下角画常驻按钮的插件，都给按钮加属性 `data-pi-corner-button`**，同窗口里所有这类按钮就会按 DOM 顺序从下往上排成一列，靠后的按下面几颗按钮的高度往上让位，谁都不压着谁。
+
+约定细节（按钮带标记、按 DOM 顺序、间距 8px、按高度累加、隐藏的按钮跳过、只写自己的内联样式）见 `specs/corner-button/`。`pi-open-git-web` 的角落按钮同样遵守这条约定。
+
 ## 为什么显示逻辑要盯 DOM
 
 先前的做法是把按钮的显示挂在 `composerControl` 插槽上（插件组件挂载就开层、卸载就收层），指望插槽只在对话界面存在。查 PI-Desktop 0.16.1 的宿主代码后发现两条都靠不住：

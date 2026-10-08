@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { copyFor, labelFor, createCornerButton, openCornerButton } from "../renderer/corner.mjs";
+import { stackCornerButton, CORNER_BUTTON_ATTR, CORNER_GAP_PX } from "../renderer/corner-stack.mjs";
 
 const renderer = await import("../renderer/index.mjs");
 
@@ -34,6 +35,7 @@ function makeElement(tagName) {
     disabled: false,
     children: [],
     attributes: {},
+    style: {},
     parent: null,
     rect: { left: 0, top: 0, width: 100, height: 40 },
     appendChild: function (child) {
@@ -56,6 +58,10 @@ function makeElement(tagName) {
     },
     setAttribute: function (name, value) {
       this.attributes[name] = String(value);
+    },
+    getAttribute: function (name) {
+      // 没有就是 null，和浏览器一致
+      return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
     },
     removeAttribute: function (name) {
       delete this.attributes[name];
@@ -100,6 +106,7 @@ function fakeDocument(options) {
     settingsElement: settings.settingsOpen === true ? makeElement("div") : null,
     hit: settings.hit || null,
     stale: [],
+    cornerButtons: settings.cornerButtons || [],
     createElement: makeElement,
     querySelector: function (selector) {
       // 设置页：整页界面盖住对话
@@ -120,6 +127,10 @@ function fakeDocument(options) {
       // 输入框可能有多个（首页与停靠两种形态），返回存在的那些
       if (selector === ".composer-shell") {
         return doc.composer ? [doc.composer] : [];
+      }
+      // 右下角按钮带：由测试自己决定这一轮有哪些按钮
+      if (selector === "[data-pi-corner-button]") {
+        return doc.cornerButtons;
       }
       return [];
     },
@@ -372,9 +383,77 @@ describe("自绘层", function () {
     });
     assert.equal(fake.calls.layersOpened, 1);
     assert.equal(fake.layerElement.children.length, 1);
-    assert.equal(corner.button.element.className, "pov-corner");
+    assert.equal(corner.element.className, "pov-corner");
+    assert.equal(corner.button.className, "pov-corner-btn");
+    // 加入按钮带的标记要在
+    assert.equal(corner.button.getAttribute(CORNER_BUTTON_ATTR), "");
     corner.close();
     assert.equal(fake.calls.layersClosed, 1);
+  });
+});
+
+describe("右下角按钮带", function () {
+  /** 造一个只回答按钮带选择器的假文档。 */
+  function stackDoc(list) {
+    return {
+      querySelectorAll: function () {
+        return list;
+      },
+    };
+  }
+
+  /** 造一颗有高度的假按钮。 */
+  function buttonOf(height) {
+    const button = makeElement("button");
+    button.rect = { left: 0, top: 0, width: 100, height: height };
+    return button;
+  }
+
+  it("靠前的贴右下角，靠后的按下面几颗的高度往上让位", function () {
+    const first = buttonOf(30);
+    const second = buttonOf(40);
+    const doc = stackDoc([first, second]);
+    stackCornerButton(doc, first);
+    stackCornerButton(doc, second);
+    // 第一颗不让位
+    assert.equal(first.style.transform, "");
+    // 第二颗让到第一颗上面，中间留一个间距
+    assert.equal(second.style.transform, "translateY(-" + (30 + CORNER_GAP_PX) + "px)");
+  });
+
+  it("只写自己的样式，不碰别家的按钮", function () {
+    const first = buttonOf(30);
+    const second = buttonOf(40);
+    stackCornerButton(stackDoc([first, second]), second);
+    assert.equal(first.style.transform, undefined);
+  });
+
+  it("隐藏（高度为 0）的按钮不占位", function () {
+    const first = buttonOf(30);
+    const hidden = buttonOf(0);
+    const third = buttonOf(40);
+    stackCornerButton(stackDoc([first, hidden, third]), third);
+    assert.equal(third.style.transform, "translateY(-" + (30 + CORNER_GAP_PX) + "px)");
+  });
+
+  it("自己还没挂进文档：什么都不做，也不报错", function () {
+    const mine = buttonOf(20);
+    stackCornerButton(stackDoc([buttonOf(30)]), mine);
+    assert.equal(mine.style.transform, undefined);
+  });
+
+  it("重复排一次结果不变", function () {
+    const first = buttonOf(30);
+    const second = buttonOf(40);
+    const doc = stackDoc([first, second]);
+    stackCornerButton(doc, second);
+    const once = second.style.transform;
+    stackCornerButton(doc, second);
+    assert.equal(second.style.transform, once);
+  });
+
+  it("间距是约定好的固定值", function () {
+    assert.equal(CORNER_GAP_PX, 8);
   });
 });
 
@@ -588,6 +667,14 @@ describe("manifest 与代码一致", function () {
     assert.equal(source.includes('"react"'), false);
     assert.equal(source.includes("vscode-here"), false);
     assert.equal(source.includes("composer.insertText"), false);
+  });
+
+  it("角落按钮带共享标记，能和别的插件排开", function () {
+    const cornerSource = readFileSync(new URL("../renderer/corner.mjs", import.meta.url), "utf8");
+    assert.equal(cornerSource.includes("CORNER_BUTTON_ATTR"), true);
+    assert.equal(cornerSource.includes("setAttribute"), true);
+    // 让位用 transform，不改布局，别家才能量到真实高度
+    assert.equal(source.includes("stackCornerButton"), true);
   });
 
   it("样式表只剩角落按钮", function () {
