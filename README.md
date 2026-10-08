@@ -54,7 +54,7 @@ Agent 扩展这条路也验过，同样拿不到：扩展的 cwd 是 `projectPat
 
 宿主没有「角落」槽位，每个插件都是自己往右下角画，所以位置靠一条跨插件约定协商：**凡是在右下角画常驻按钮的插件，都给按钮加属性 `data-pi-corner-button`**，同窗口里所有这类按钮就会按 DOM 顺序从下往上排成一列，靠后的按下面几颗按钮的高度往上让位，谁都不压着谁。
 
-约定细节（按钮带标记、按 DOM 顺序、间距 8px、按高度累加、隐藏的按钮跳过、只写自己的内联样式）见 `specs/corner-button/`。`pi-open-git-web` 的角落按钮同样遵守这条约定。
+约定细节（按钮带标记、按 DOM 顺序、间距 8px、按高度累加、隐藏的按钮跳过、只写自己的内联样式）见 `specs/corner-button/`。`pi-open-git-web` 的角落按钮同样遵守这条约定。这条约定是临时的，根治要等宿主给 corner 槽位：[vastsa/PI-Desktop#1469](https://github.com/vastsa/PI-Desktop/issues/1469)。
 
 ## 为什么显示逻辑要盯 DOM
 

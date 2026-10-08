@@ -62,7 +62,7 @@ open(pluginId) {
 - **状态机只有四个态**：`idle` / `busy` / `done` / `fail`，失败原因进 `title`，toast 由主进程统一发。
 - **保留 `ui.panel` 之外的权限不变**：换方案后权限从 `renderer.extension + ui.panel + notify` 收窄回 `renderer.extension + notify`，收窄不触发宿主的权限复核，热重载即可生效。
 
-- **右下角按钮带，而不是各画各的**：宿主没有角落槽位（0.16.1 的 `rendererSlots` 只有 `userAction` / `assistantAction` / `entryExtra` / `toolCard` / `blockRenderer` / `composerControl` / `composerTrigger`；`pi.ui.openLayer()` 给每个插件一个独立的 0×0 fixed 层，`injectStyle` 又把样式 `@scope` 到本插件自己的 `data-pi-plugin` 上）。两个插件各自 `inset:0` + `justify-content:flex-end`，必然落在同一个像素上——和 `pi-open-git-web` 的按钮真机重叠就是这么来的。解法是插件之间的约定：按钮带 `data-pi-corner-button` 标记，按 DOM 顺序从下往上排，靠后的按下面几颗的高度 `translateY` 让位。每颗按钮只给自己让位、不碰别家元素，两个插件各算一次结果一致；`translateY` 只改绘制，不影响别家量到的 `getBoundingClientRect().height`。**要根治还是得宿主给一个 corner 槽位**，约定只是在那之前的办法。
+- **右下角按钮带，而不是各画各的**：宿主没有角落槽位（0.16.1 的 `rendererSlots` 只有 `userAction` / `assistantAction` / `entryExtra` / `toolCard` / `blockRenderer` / `composerControl` / `composerTrigger`；`pi.ui.openLayer()` 给每个插件一个独立的 0×0 fixed 层，`injectStyle` 又把样式 `@scope` 到本插件自己的 `data-pi-plugin` 上）。两个插件各自 `inset:0` + `justify-content:flex-end`，必然落在同一个像素上——和 `pi-open-git-web` 的按钮真机重叠就是这么来的。解法是插件之间的约定：按钮带 `data-pi-corner-button` 标记，按 DOM 顺序从下往上排，靠后的按下面几颗的高度 `translateY` 让位。每颗按钮只给自己让位、不碰别家元素，两个插件各算一次结果一致；`translateY` 只改绘制，不影响别家量到的 `getBoundingClientRect().height`。**要根治还是得宿主给一个 corner 槽位**（已提 [vastsa/PI-Desktop#1469](https://github.com/vastsa/PI-Desktop/issues/1469)），约定只是在那之前的办法。
 
 ## 已知限制
 
