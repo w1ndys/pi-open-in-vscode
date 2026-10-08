@@ -1,6 +1,6 @@
 # 变更记录
 
-## 未发布
+## 0.6.1
 
 - Windows 不再调用 `/usr/bin/open`，也不再 spawn 无扩展名的 `code`。那个文件是 shell 脚本，Node 会先命中它，于是已安装也会提示「请确认已安装」。现在先定位 `Code.exe`（PATH 中的 `code.cmd`、默认安装目录、注册表），找不到再显式启动 `code.cmd`。直接拉起 `Code.exe` 时去掉继承来的 `ELECTRON_RUN_AS_NODE`。
 
