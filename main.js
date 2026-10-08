@@ -6,8 +6,10 @@
  */
 
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const { okResult, failResult } = require("./entity/open-result");
 const { readWorkspacePath } = require("./data/workspace");
+const { locateWindowsCode, readRegistryDefaults } = require("./data/vscode-install");
 const {
   buildOpenPlan,
   NO_PROJECT_ROOT_CODE,
@@ -53,14 +55,37 @@ const PROBE_ACTION = "hasWorkspace";
 const SUCCESS_MESSAGE = "已用 VSCode 打开";
 
 /**
+ * 直接启动 Code.exe 时用的环境。
+ * 去掉「把 Electron 当 Node 跑」的变量，否则编辑器进程会秒退、窗口不出现。
+ * @returns {NodeJS.ProcessEnv}
+ */
+function envForCodeExe() {
+  const env = Object.assign({}, process.env);
+  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ATOM_SHELL_INTERNAL_RUN_AS_NODE;
+  return env;
+}
+
+/**
  * 拉起命令后立刻返回，不等 VSCode 退出，也不走会弹确认的协议。
  * @param {string} command
  * @param {string[]} args
+ * @param {{ clearElectronRunAsNode?: boolean }} [step]
  * @returns {Promise<void>}
  */
-function runCommand(command, args) {
+function runCommand(command, args, step) {
   return new Promise(function (resolve, reject) {
-    const child = spawn(command, args, { stdio: "ignore", detached: true });
+    const spawnOptions = {
+      stdio: "ignore",
+      detached: true,
+      // Windows 拉起脚本时不闪控制台；其它系统忽略这项
+      windowsHide: true,
+    };
+    // 只有直接拉 Code.exe 才换环境；code.cmd 要自己设置这个变量再转给 CLI
+    if (step && step.clearElectronRunAsNode) {
+      spawnOptions.env = envForCodeExe();
+    }
+    const child = spawn(command, args, spawnOptions);
     let settled = false;
     child.once("error", function (error) {
       // 命令不存在或没法启动
@@ -83,6 +108,39 @@ function runCommand(command, args) {
 }
 
 /**
+ * 查 Windows 安装路径。查失败就返回 null，交给计划里的 code.cmd 退路。
+ * @returns {string | null}
+ */
+function safeLocateWindowsCode() {
+  try {
+    const withoutRegistry = locateWindowsCode(process.env, fs.existsSync, []);
+    // PATH 或默认安装目录已经能确定时，不必再启动 reg.exe
+    if (withoutRegistry) {
+      return withoutRegistry;
+    }
+    return locateWindowsCode(process.env, fs.existsSync, readRegistryDefaults());
+  } catch (_error) {
+    // 注册表或磁盘查询异常时不当成「没装」，后面还有 code.cmd 可试
+    return null;
+  }
+}
+
+/**
+ * 这次打开要用的系统信息。Windows 先定位 Code.exe，其它系统仍走 open -a。
+ * @returns {{ platform: string, windowsCommand?: string | null }}
+ */
+function describeLaunch() {
+  // 非 Windows 没有 Code.exe 这一层，保持原来的 open -a
+  if (process.platform !== "win32") {
+    return { platform: process.platform };
+  }
+  return {
+    platform: "win32",
+    windowsCommand: safeLocateWindowsCode(),
+  };
+}
+
+/**
  * 按计划依次尝试本机命令，点一下就打开。
  * @param {{ ok: true, dir: string, spawn: Array<{ command: string, args: string[] }> }} plan
  * @param {Function} [runner] 测试注入的执行器，默认真拉起命令
@@ -93,7 +151,7 @@ async function executeOpenPlan(plan, runner) {
   while (index < plan.spawn.length) {
     const step = plan.spawn[index];
     try {
-      await start(step.command, step.args);
+      await start(step.command, step.args, step);
       // macOS open -a 成功
       if (step.command === "/usr/bin/open") {
         return okResult(plan.dir, "open");
@@ -118,7 +176,7 @@ async function openCurrentWorkspace(runner) {
   if (dir === null) {
     return failResult(NO_PROJECT_ROOT_CODE, NO_PROJECT_ROOT_MESSAGE);
   }
-  const plan = buildOpenPlan(dir);
+  const plan = buildOpenPlan(dir, describeLaunch());
   // 业务层兜底：目录存在但不是可交给 VSCode 的绝对路径
   if (!plan.ok) {
     return failResult(plan.code, plan.message);

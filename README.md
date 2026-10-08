@@ -10,7 +10,7 @@ PI-Desktop 插件（`io.github.w1ndys.pi-open-in-vscode`）：立刻用 Visual S
 - **斜杠命令**：输入 `/vscode` 回车。后面不能带文字，否则宿主不会执行。
 - **命令面板**：搜「用 VSCode 打开当前工作目录」。
 
-打开顺序：macOS `open -a "Visual Studio Code"` → `code`。
+- 打开顺序：macOS 先 `open -a "Visual Studio Code"`，再试 `code`。Windows 先定位 `Code.exe`（PATH 里的 `code.cmd`、默认安装目录、注册表），找不到再显式启动 `code.cmd`。不会去执行安装目录里那个没有扩展名的 `code` 脚本。
 
 按钮**只在对话界面里出现**：切到设置页、定时任务页、插件页会自动收起，回到对话界面又回来。没有项目根（临时会话）时也不显示。
 
